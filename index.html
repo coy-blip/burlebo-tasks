@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Burlebo — Product Launch Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F7F6F3;
+    --surface: #FFFFFF;
+    --surface2: #F0EEE9;
+    --border: #E4E1DA;
+    --border2: #D0CDCA;
+    --text: #1A1917;
+    --text2: #6B6860;
+    --text3: #9E9B96;
+    --coy: #1A56DB;
+    --coy-bg: #EFF4FF;
+    --coy-border: #C3D3F7;
+    --designer: #7E3AF2;
+    --designer-bg: #F5F0FF;
+    --designer-border: #D9C9F8;
+    --green: #057A55;
+    --green-bg: #F0FAF4;
+    --green-border: #BCF0DA;
+    --amber: #92400E;
+    --amber-bg: #FFFBEB;
+    --amber-border: #FDE68A;
+    --red: #9B1C1C;
+    --red-bg: #FDF2F2;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* HEADER */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .header-logo span { color: var(--text3); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .sync-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text3);
+  }
+  .sync-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  .sync-dot.syncing { background: var(--amber); animation: none; }
+  .sync-dot.error { background: var(--red-bg); animation: none; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  /* ROLE SWITCHER */
+  .role-switcher {
+    display: flex;
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .role-btn {
+    padding: 5px 14px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    cursor: pointer;
+    color: var(--text2);
+    transition: all 0.15s;
+  }
+  .role-btn.active-coy { background: var(--coy-bg); color: var(--coy); font-weight: 500; }
+  .role-btn.active-designer { background: var(--designer-bg); color: var(--designer); font-weight: 500; }
+
+  /* MAIN */
+  .main { max-width: 780px; margin: 0 auto; padding: 32px 24px; }
+
+  .page-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .page-sub {
+    font-size: 13px;
+    color: var(--text3);
+    margin-bottom: 28px;
+  }
+
+  /* STATS ROW */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+  .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .stat-value { font-size: 24px; font-weight: 600; color: var(--text); line-height: 1; }
+  .stat-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+  /* ADD PRODUCT BAR */
+  .add-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .add-bar input {
+    flex: 1;
+    padding: 9px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .add-bar input:focus { border-color: var(--border2); }
+  .add-bar input::placeholder { color: var(--text3); }
+  .btn {
+    padding: 9px 18px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--border2); }
+  .btn-primary {
+    background: var(--text);
+    color: #fff;
+    border-color: var(--text);
+  }
+  .btn-primary:hover { opacity: 0.85; background: var(--text); }
+
+  /* SECTION */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  .section-header:hover { background: var(--surface2); }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
+  .section-right { display: flex; align-items: center; gap: 12px; }
+  .prog-wrap { display: flex; align-items: center; gap: 8px; }
+  .prog-bar { width: 72px; height: 3px; background: var(--border); border-radius: 2px; }
+  .prog-fill { height: 3px; border-radius: 2px; background: var(--green); transition: width 0.4s; }
+  .prog-text { font-size: 12px; color: var(--text3); min-width: 40px; text-align: right; }
+  .chevron { font-size: 16px; color: var(--text3); transition: transform 0.2s; display: inline-block; }
+  .chevron.open { transform: rotate(180deg); }
+
+  /* PRODUCT ROW */
+  .product-row { border-bottom: 1px solid var(--border); }
+  .product-row:last-child { border-bottom: none; }
+  .product-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 18px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .product-header:hover { background: #FAFAF8; }
+  .product-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .product-right { display: flex; align-items: center; gap: 8px; }
+
+  .badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .badge-complete { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .badge-progress { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .badge-pending { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
+
+  /* TASK LIST */
+  .task-list { padding: 8px 18px 12px 36px; }
+  .task-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 0;
+  }
+  .task-check {
+    width: 15px; height: 15px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border2);
+    appearance: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+    transition: all 0.15s;
+    background: var(--surface);
+  }
+  .task-check.owner-coy { border-color: var(--coy-border); }
+  .task-check.owner-coy:checked { background: var(--coy); border-color: var(--coy); }
+  .task-check.owner-designer { border-color: var(--designer-border); }
+  .task-check.owner-designer:checked { background: var(--designer); border-color: var(--designer); }
+  .task-check:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px; top: 1px;
+    width: 5px; height: 8px;
+    border: 1.5px solid white;
+    border-top: none; border-left: none;
+    transform: rotate(45deg);
+  }
+  .task-check:disabled { opacity: 0.35; cursor: not-allowed; }
+  .task-check.owner-coy:not(:disabled):hover { border-color: var(--coy); }
+  .task-check.owner-designer:not(:disabled):hover { border-color: var(--designer); }
+
+  .task-label { font-size: 13px; color: var(--text); flex: 1; }
+  .task-label.done { text-decoration: line-through; color: var(--text3); }
+
+  .owner-pill {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 7px;
+    border-radius: 10px;
+    letter-spacing: 0.02em;
+  }
+  .owner-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .owner-pill.designer { background: var(--designer-bg); color: var(--designer); }
+
+  .existing-tag {
+    font-size: 10px;
+    color: var(--text3);
+    font-style: italic;
+  }
+
+  /* DELETE BTN */
+  .delete-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text3);
+    font-size: 16px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: all 0.15s;
+    opacity: 0;
+  }
+  .product-header:hover .delete-btn { opacity: 1; }
+  .delete-btn:hover { color: var(--red); background: var(--red-bg); }
+
+  /* EMPTY */
+  .empty { padding: 28px 18px; text-align: center; color: var(--text3); font-size: 13px; }
+
+  /* LOADING */
+  .loading-screen {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 999;
+  }
+  .loading-logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+  .loading-spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* IMPORT MODAL */
+  .import-modal {
+    position: fixed; inset: 0;
+    background: rgba(26,25,23,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 300;
+  }
+  .import-box {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 28px;
+    width: 480px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  }
+  .import-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .import-sub { font-size: 13px; color: var(--text3); margin-bottom: 20px; }
+  .import-preview { margin-bottom: 20px; }
+  .import-sheet { margin-bottom: 16px; }
+  .import-sheet-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 8px; }
+  .import-product-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+  .import-product-name { color: var(--text); flex: 1; }
+  .import-product-status { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; }
+  .status-complete { background: var(--green-bg); color: var(--green); }
+  .status-coy { background: #FFF3E0; color: #E65100; }
+  .status-designer { background: var(--designer-bg); color: var(--designer); }
+  .status-mixed { background: var(--surface2); color: var(--text2); }
+  .import-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .import-count { font-size: 13px; color: var(--text3); padding: 8px 0; border-top: 1px solid var(--border); margin-top: 8px; }
+  .import-duplicate { opacity: 0.5; }
+  .dup-tag { font-size: 10px; color: var(--text3); margin-left: 6px; }
+
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(26,25,23,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+  }
+  .modal {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 32px;
+    width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  }
+  .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .modal-sub { font-size: 13px; color: var(--text3); margin-bottom: 24px; }
+  .modal-options { display: flex; flex-direction: column; gap: 10px; }
+  .modal-option {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    text-align: left;
+    width: 100%;
+  }
+  .modal-option:hover { border-color: var(--border2); background: var(--surface2); }
+  .modal-option.opt-coy:hover { border-color: var(--coy-border); background: var(--coy-bg); }
+  .modal-option.opt-designer:hover { border-color: var(--designer-border); background: var(--designer-bg); }
+  .modal-option-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .modal-option-icon.coy { background: var(--coy-bg); color: var(--coy); }
+  .modal-option-icon.designer { background: var(--designer-bg); color: var(--designer); }
+  .modal-option-name { font-size: 14px; font-weight: 500; }
+  .modal-option-desc { font-size: 12px; color: var(--text3); margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loading">
+  <div class="loading-logo">Burlebo</div>
+  <div class="loading-spinner"></div>
+</div>
+
+<div class="modal-overlay" id="role-modal" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">Who are you?</div>
+    <div class="modal-sub">Choose your role to get started. You can switch anytime.</div>
+    <div class="modal-options">
+      <button class="modal-option opt-coy" onclick="selectRole('coy')">
+        <div class="modal-option-icon coy">C</div>
+        <div>
+          <div class="modal-option-name">Coy</div>
+          <div class="modal-option-desc">Upload steps + copywriting guide</div>
+        </div>
+      </button>
+      <button class="modal-option opt-designer" onclick="selectRole('designer')">
+        <div class="modal-option-icon designer">D</div>
+        <div>
+          <div class="modal-option-name">Designer</div>
+          <div class="modal-option-desc">A+ content + PDP images</div>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+  <header class="header">
+    <div class="header-logo">Burlebo <span>/</span> Launch Tracker</div>
+    <div class="header-right">
+      <div class="sync-indicator">
+        <div class="sync-dot" id="sync-dot"></div>
+        <span id="sync-text">Synced</span>
+      </div>
+      <div class="role-switcher">
+        <button class="role-btn" id="btn-coy" onclick="switchRole('coy')">Coy</button>
+        <button class="role-btn" id="btn-designer" onclick="switchRole('designer')">Designer</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="page-title">Product launch tracker</div>
+    <div class="page-sub">Track every step from new product to live on Amazon.</div>
+
+    <div class="stats-row" id="stats-row"></div>
+
+    <div class="add-bar">
+      <input type="text" id="new-product-input" placeholder="Add product — e.g. Go To Tee, olive colorway" />
+      <button class="btn btn-primary" onclick="addProduct()">+ Add product</button>
+      <button class="btn" onclick="document.getElementById('xlsx-upload').click()">&#8593; Import Excel</button>
+      <input type="file" id="xlsx-upload" accept=".xlsx" style="display:none;" onchange="handleExcelUpload(event)" />
+    </div>
+
+    <div id="sections-container"></div>
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const SECTIONS = [
+  {
+    id: 'upload',
+    title: 'New product uploading',
+    tasks: [
+      { id: 'flat_file', label: 'Add to flat file', owner: 'coy' },
+      { id: 'amazon_inv', label: 'Add to Amazon inventory', owner: 'coy' },
+      { id: 'images', label: 'Add images', owner: 'coy' },
+      { id: 'activate', label: 'Activate product', owner: 'coy' },
+      { id: 'blb_sync', label: 'Sync to BLB inventory', owner: 'coy' },
+      { id: 'aplus_connect', label: 'Connect A+ content', owner: 'coy' },
+    ]
+  },
+  {
+    id: 'content',
+    title: 'Designer / content',
+    tasks: [
+      { id: 'copy_guide', label: 'Copywriting guide', owner: 'coy' },
+      { id: 'aplus', label: 'A+ content for product category', owner: 'designer' },
+      { id: 'pdp_images', label: 'PDP images for all SKUs', owner: 'designer' },
+    ]
+  }
+];
+
+let role = localStorage.getItem('burlebo_role') || null;
+let taskState = {};
+let products = [];
+let collapsed = {};
+let productCollapsed = {};
+let saving = false;
+
+async function loadData() {
+  const { data, error } = await sb.from('tasks').select('id, data');
+  if (error) { setSyncStatus('error', 'Connection error'); return; }
+  for (const row of data) {
+    if (row.id === 'state') taskState = row.data || {};
+    if (row.id === 'products') products = row.data || [];
+  }
+  if (products.length === 0) {
+    products = [
+      { id: 'gtt-olive-' + Date.now(), name: 'Go To Tee — new color', overrides: { content: { copy_guide: true, aplus: true } } },
+      { id: 'ph-new-' + Date.now(), name: 'Performance Hoodie — new style', overrides: {} },
+    ];
+    await saveProducts();
+  }
+}
+
+async function saveState() {
+  setSyncStatus('syncing', 'Saving...');
+  const { error } = await sb.from('tasks').update({ data: taskState }).eq('id', 'state');
+  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
+}
+
+async function saveProducts() {
+  setSyncStatus('syncing', 'Saving...');
+  const { error } = await sb.from('tasks').update({ data: products }).eq('id', 'products');
+  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
+}
+
+function setSyncStatus(status, text) {
+  const dot = document.getElementById('sync-dot');
+  const txt = document.getElementById('sync-text');
+  if (!dot || !txt) return;
+  dot.className = 'sync-dot' + (status === 'syncing' ? ' syncing' : status === 'error' ? ' error' : '');
+  txt.textContent = text;
+}
+
+function getTaskDone(productId, sectionId, taskId) {
+  const p = products.find(x => x.id === productId);
+  if (p?.overrides?.[sectionId]?.[taskId]) return true;
+  return taskState[productId]?.[sectionId]?.[taskId] || false;
+}
+
+function isOverride(productId, sectionId, taskId) {
+  const p = products.find(x => x.id === productId);
+  return !!(p?.overrides?.[sectionId]?.[taskId]);
+}
+
+async function setTask(productId, sectionId, taskId, val) {
+  if (!taskState[productId]) taskState[productId] = {};
+  if (!taskState[productId][sectionId]) taskState[productId][sectionId] = {};
+  taskState[productId][sectionId][taskId] = val;
+  render();
+  await saveState();
+}
+
+async function addProduct() {
+  const input = document.getElementById('new-product-input');
+  const name = input.value.trim();
+  if (!name) return;
+  const id = 'p-' + Date.now();
+  products.push({ id, name, overrides: {} });
+  input.value = '';
+  render();
+  await saveProducts();
+}
+
+async function deleteProduct(id) {
+  if (!confirm('Remove this product?')) return;
+  products = products.filter(p => p.id !== id);
+  render();
+  await saveProducts();
+}
+
+function selectRole(r) {
+  role = r;
+  localStorage.setItem('burlebo_role', r);
+  document.getElementById('role-modal').style.display = 'none';
+  updateRoleUI();
+  render();
+}
+
+function switchRole(r) {
+  role = r;
+  localStorage.setItem('burlebo_role', r);
+  updateRoleUI();
+  render();
+}
+
+function updateRoleUI() {
+  document.getElementById('btn-coy').className = 'role-btn' + (role === 'coy' ? ' active-coy' : '');
+  document.getElementById('btn-designer').className = 'role-btn' + (role === 'designer' ? ' active-designer' : '');
+}
+
+function sectionProgress(sectionId) {
+  const section = SECTIONS.find(s => s.id === sectionId);
+  let done = 0, total = 0;
+  for (const p of products) {
+    for (const t of section.tasks) {
+      total++;
+      if (getTaskDone(p.id, sectionId, t.id)) done++;
+    }
+  }
+  return { done, total };
+}
+
+function productStatus(productId, sectionId) {
+  const section = SECTIONS.find(s => s.id === sectionId);
+  const done = section.tasks.filter(t => getTaskDone(productId, sectionId, t.id)).length;
+  if (done === section.tasks.length) return 'complete';
+  if (done > 0) return 'progress';
+  return 'pending';
+}
+
+function totalStats() {
+  let totalTasks = 0, doneTasks = 0;
+  for (const s of SECTIONS) {
+    for (const p of products) {
+      for (const t of s.tasks) {
+        totalTasks++;
+        if (getTaskDone(p.id, s.id, t.id)) doneTasks++;
+      }
+    }
+  }
+  const complete = products.filter(p => SECTIONS.every(s => productStatus(p.id, s.id) === 'complete')).length;
+  return { totalTasks, doneTasks, complete, total: products.length };
+}
+
+function render() {
+  renderStats();
+  renderSections();
+}
+
+function renderStats() {
+  const { totalTasks, doneTasks, complete, total } = totalStats();
+  const pct = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Products</div>
+      <div class="stat-value">${total}</div>
+      <div class="stat-sub">in progress</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Complete</div>
+      <div class="stat-value">${complete}</div>
+      <div class="stat-sub">fully launched</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Overall progress</div>
+      <div class="stat-value">${pct}%</div>
+      <div class="stat-sub">${doneTasks} of ${totalTasks} steps done</div>
+    </div>
+  `;
+}
+
+function renderSections() {
+  const container = document.getElementById('sections-container');
+  let html = '';
+
+  for (const section of SECTIONS) {
+    const prog = sectionProgress(section.id);
+    const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
+    const isOpen = !collapsed[section.id];
+
+    html += `<div class="section">
+      <div class="section-header" onclick="toggleSection('${section.id}')">
+        <span class="section-title">${section.title}</span>
+        <div class="section-right">
+          <div class="prog-wrap">
+            <div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div>
+            <span class="prog-text">${prog.done}/${prog.total}</span>
+          </div>
+          <span class="chevron ${isOpen ? 'open' : ''}">&#8964;</span>
+        </div>
+      </div>`;
+
+    if (isOpen) {
+      if (products.length === 0) {
+        html += `<div class="empty">No products yet — add one above to get started.</div>`;
+      } else {
+        for (const product of products) {
+          const pkey = section.id + '|' + product.id;
+          const status = productStatus(product.id, section.id);
+          const isProductOpen = productCollapsed[pkey] !== true;
+          const doneTasks = section.tasks.filter(t => getTaskDone(product.id, section.id, t.id)).length;
+          const badgeClass = status === 'complete' ? 'badge-complete' : status === 'progress' ? 'badge-progress' : 'badge-pending';
+          const badgeLabel = status === 'complete' ? 'Complete' : status === 'progress' ? `${doneTasks}/${section.tasks.length} done` : 'Not started';
+
+          html += `<div class="product-row">
+            <div class="product-header" onclick="toggleProduct('${pkey}')">
+              <span class="product-name">${product.name}</span>
+              <div class="product-right">
+                <span class="badge ${badgeClass}">${badgeLabel}</span>
+                <button class="delete-btn" onclick="event.stopPropagation();deleteProduct('${product.id}')" title="Remove product">&#10005;</button>
+                <span class="chevron ${isProductOpen ? 'open' : ''}" style="font-size:13px;">&#8964;</span>
+              </div>
+            </div>`;
+
+          if (isProductOpen) {
+            html += `<div class="task-list">`;
+            for (const task of section.tasks) {
+              const checked = getTaskDone(product.id, section.id, task.id);
+              const override = isOverride(product.id, section.id, task.id);
+              const canCheck = role === task.owner && !override;
+
+              html += `<div class="task-item">
+                <input type="checkbox" class="task-check owner-${task.owner}"
+                  ${checked ? 'checked' : ''}
+                  ${!canCheck ? 'disabled' : ''}
+                  onchange="setTask('${product.id}','${section.id}','${task.id}',this.checked)"
+                  title="${override ? 'Already done for this product line' : (!canCheck ? 'Only ' + (task.owner === 'coy' ? 'Coy' : 'Designer') + ' can check this off' : '')}"
+                />
+                <span class="task-label ${checked ? 'done' : ''}">${task.label}</span>
+                <span class="owner-pill ${task.owner}">${task.owner === 'coy' ? 'Coy' : 'Designer'}</span>
+                ${override ? '<span class="existing-tag">existing</span>' : ''}
+              </div>`;
+            }
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+      }
+    }
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function toggleSection(id) {
+  collapsed[id] = !collapsed[id];
+  render();
+}
+
+function toggleProduct(key) {
+  productCollapsed[key] = !productCollapsed[key];
+  render();
+}
+
+// ── EXCEL IMPORT ─────────────────────────────────────────────
+
+// Color → task status mapping from the spreadsheet color key
+const COLOR_STATUS = {
+  'FFD9EAD3': 'complete',       // green = 100% done
+  'FFFF00FF': 'coy_upload',     // magenta = Designer done, Coy needs to upload
+  'FFFFF2CC': 'designer_pdp',   // yellow = PDP images needed (designer)
+  'FFFCE5CD': 'coy_copy_pdp',   // orange = Copywriting guide + PDP needed (coy)
+  'FFC9DAF8': 'designer_pdp_aplus', // blue = PDP + A+ content needed (designer)
+  'FFF4CCCC': 'coy_all',        // pink = Copywriting + PDP + A+ needed (coy)
+  'FFD5A6BD': 'designer_aplus', // purple = A+ content needed (designer)
+  '00000000': 'complete',       // no fill = done
+};
+
+// Map color status → which tasks are already done (overrides) vs still needed
+function statusToOverrides(status) {
+  // Returns { upload: {taskId: true}, content: {taskId: true} } for tasks already done
+  switch(status) {
+    case 'complete':
+      return {
+        upload: { flat_file:true, amazon_inv:true, images:true, activate:true, blb_sync:true, aplus_connect:true },
+        content: { copy_guide:true, aplus:true, pdp_images:true }
+      };
+    case 'coy_upload': // Designer done, Coy needs to upload — content all done
+      return {
+        upload: {},
+        content: { copy_guide:true, aplus:true, pdp_images:true }
+      };
+    case 'designer_pdp': // PDP images needed — copy guide done, A+ done
+      return {
+        upload: {},
+        content: { copy_guide:true, aplus:true }
+      };
+    case 'designer_pdp_aplus': // PDP + A+ needed — only copy guide done
+      return {
+        upload: {},
+        content: { copy_guide:true }
+      };
+    case 'designer_aplus': // A+ needed — copy guide + PDP done
+      return {
+        upload: {},
+        content: { copy_guide:true, pdp_images:true }
+      };
+    case 'coy_copy_pdp': // Copywriting + PDP needed — nothing done in content
+      return { upload: {}, content: {} };
+    case 'coy_all': // Everything needed
+      return { upload: {}, content: {} };
+    default:
+      return { upload: {}, content: {} };
+  }
+}
+
+function statusLabel(status) {
+  const labels = {
+    complete: 'Complete',
+    coy_upload: 'Coy: upload',
+    designer_pdp: 'Designer: PDP images',
+    designer_pdp_aplus: 'Designer: PDP + A+',
+    designer_aplus: 'Designer: A+ content',
+    coy_copy_pdp: 'Coy: copy + PDP',
+    coy_all: 'Coy: all steps',
+  };
+  return labels[status] || status;
+}
+
+function statusClass(status) {
+  if (status === 'complete') return 'status-complete';
+  if (status.startsWith('coy')) return 'status-coy';
+  if (status.startsWith('designer')) return 'status-designer';
+  return 'status-mixed';
+}
+
+let pendingImport = [];
+
+function handleExcelUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array', cellStyles: true });
+
+      const PRODUCT_SHEETS = ['Mens', 'Youth', 'Accessories'];
+      const parsed = {};
+
+      for (const sheetName of PRODUCT_SHEETS) {
+        if (!wb.SheetNames.includes(sheetName)) continue;
+        const ws = wb.Sheets[sheetName];
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        parsed[sheetName] = {};
+
+        for (let r = 7; r <= range.e.r; r++) { // row 8+ (0-indexed = 7)
+          const skuCell = ws[XLSX.utils.encode_cell({r, c: 0})];
+          const nameCell = ws[XLSX.utils.encode_cell({r, c: 1})];
+          if (!nameCell || !nameCell.v) continue;
+
+          const name = String(nameCell.v).trim();
+          const bgColor = (nameCell.s && nameCell.s.bgColor && nameCell.s.bgColor.rgb)
+            ? nameCell.s.bgColor.rgb.toUpperCase()
+            : '00000000';
+          const status = COLOR_STATUS[bgColor] || 'coy_all';
+
+          if (!parsed[sheetName][name]) {
+            parsed[sheetName][name] = status;
+          }
+        }
+      }
+
+      // Build preview list
+      pendingImport = [];
+      const existingNames = new Set(products.map(p => p.name.toLowerCase()));
+
+      for (const [sheet, prods] of Object.entries(parsed)) {
+        for (const [name, status] of Object.entries(prods)) {
+          pendingImport.push({
+            sheet,
+            name,
+            status,
+            duplicate: existingNames.has(name.toLowerCase()),
+            overrides: statusToOverrides(status),
+          });
+        }
+      }
+
+      showImportModal();
+    } catch(err) {
+      alert('Could not read the file. Make sure it\'s the Burlebo line sheet (.xlsx).');
+      console.error(err);
+    }
+    event.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showImportModal() {
+  const existing = document.getElementById('import-modal');
+  if (existing) existing.remove();
+
+  const bySheet = {};
+  for (const p of pendingImport) {
+    if (!bySheet[p.sheet]) bySheet[p.sheet] = [];
+    bySheet[p.sheet].push(p);
+  }
+
+  const newCount = pendingImport.filter(p => !p.duplicate).length;
+  const dupCount = pendingImport.filter(p => p.duplicate).length;
+
+  let sheetsHtml = '';
+  for (const [sheet, prods] of Object.entries(bySheet)) {
+    sheetsHtml += `<div class="import-sheet">
+      <div class="import-sheet-title">${sheet} (${prods.length})</div>`;
+    for (const p of prods) {
+      sheetsHtml += `<div class="import-product-row ${p.duplicate ? 'import-duplicate' : ''}">
+        <span class="import-product-name">${p.name}${p.duplicate ? '<span class="dup-tag">already added</span>' : ''}</span>
+        <span class="import-product-status ${statusClass(p.status)}">${statusLabel(p.status)}</span>
+      </div>`;
+    }
+    sheetsHtml += `</div>`;
+  }
+
+  const div = document.createElement('div');
+  div.id = 'import-modal';
+  div.className = 'import-modal';
+  div.innerHTML = `
+    <div class="import-box">
+      <div class="import-title">Import products from Excel</div>
+      <div class="import-sub">Review products below. Status is read from the color coding in your sheet.</div>
+      <div class="import-preview">${sheetsHtml}</div>
+      <div class="import-count">${newCount} new products · ${dupCount} already in tracker (will be skipped)</div>
+      <div class="import-actions">
+        <button class="btn" onclick="document.getElementById('import-modal').remove()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmImport()">Import ${newCount} products</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+async function confirmImport() {
+  const toAdd = pendingImport.filter(p => !p.duplicate);
+  for (const p of toAdd) {
+    const id = 'p-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
+    products.push({ id, name: p.name, overrides: p.overrides });
+  }
+  document.getElementById('import-modal').remove();
+  render();
+  await saveProducts();
+}
+
+// ── END EXCEL IMPORT ──────────────────────────────────────────
+
+async function init() {
+  await loadData();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  if (!role) {
+    document.getElementById('role-modal').style.display = 'flex';
+  } else {
+    updateRoleUI();
+  }
+
+  render();
+
+  sb.channel('tasks-changes')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, async (payload) => {
+      if (payload.new.id === 'state') taskState = payload.new.data || {};
+      if (payload.new.id === 'products') products = payload.new.data || [];
+      render();
+      setSyncStatus('synced', 'Synced');
+    })
+    .subscribe();
+
+  document.getElementById('new-product-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addProduct();
+  });
+}
+
+init();
+</script>
+</body>
+</html>
