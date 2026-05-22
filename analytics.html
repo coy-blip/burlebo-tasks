@@ -313,19 +313,32 @@
   // Initial date pickers — default to latest day available
   // ============================================================================
   async function initDates() {
-    // Pull min/max dates we have
-    const { data: latestRow } = await sb
-      .from('sales_daily').select('date').order('date', { ascending: false }).limit(1);
-    const latest = (latestRow && latestRow[0]) ? String(latestRow[0].date).slice(0,10) : toISO(new Date());
-
-    document.getElementById('a-start1').value = latest;
-    document.getElementById('a-end1').value = latest;
-    // No default for comparison range — user opts in
+    const latest = await getLatestSalesDate();
+    const def = latest || toISO(new Date());
+    document.getElementById('a-start1').value = def;
+    document.getElementById('a-end1').value = def;
   }
 
-  function setQuickRange(days) {
-    const today = todayUTC();
-    const end = today;
+  let _latestSalesDate = null; // cached so quick buttons don't re-query every click
+
+  async function getLatestSalesDate() {
+    if (_latestSalesDate) return _latestSalesDate;
+    const { data } = await sb
+      .from('sales_daily').select('date').order('date', { ascending: false }).limit(1);
+    if (data && data[0]) {
+      _latestSalesDate = (data[0].date instanceof Date) ? toISO(data[0].date) : String(data[0].date).slice(0,10);
+    }
+    return _latestSalesDate;
+  }
+
+  async function setQuickRange(days) {
+    const latest = await getLatestSalesDate();
+    if (!latest) {
+      document.getElementById('analytics-content').innerHTML =
+        '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">No sales data uploaded yet.</div></div>';
+      return;
+    }
+    const end = parseISO(latest);
     const start = addDays(end, -(days-1));
     document.getElementById('a-start1').value = toISO(start);
     document.getElementById('a-end1').value = toISO(end);
