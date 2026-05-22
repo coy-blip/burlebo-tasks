@@ -1178,18 +1178,20 @@ function renderSidebar() {
   const groupEl = document.getElementById('group-filters');
   if (groupEl) {
     const groupCounts = {};
-    for (const p of products) {
-      const g = getProductGroup(p.name);
-      // Count products that are NOT complete in at least one visible section
-      const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
-      const incomplete = visibleSections.some(s => productStatus(p.id, s.id) !== 'complete');
-      if (incomplete) groupCounts[g] = (groupCounts[g] || 0) + 1;
-      else if (!groupCounts[g]) groupCounts[g] = 0; // still show group even if all done
-    }
-    // Rebuild to include all groups (even fully complete ones showing 0)
+    // First make sure all groups exist
     for (const p of products) {
       const g = getProductGroup(p.name);
       if (groupCounts[g] === undefined) groupCounts[g] = 0;
+    }
+    // Count products where the current role still has incomplete tasks
+    for (const p of products) {
+      const g = getProductGroup(p.name);
+      const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
+      const hasMyIncompleteTasks = visibleSections.some(s => {
+        const myTasks = s.tasks.filter(t => t.owner === role);
+        return myTasks.some(t => !getTaskDone(p.id, s.id, t.id));
+      });
+      if (hasMyIncompleteTasks) groupCounts[g] = (groupCounts[g] || 0) + 1;
     }
     const sortedGroups = Object.entries(groupCounts).sort((a,b) => a[0].localeCompare(b[0]));
     groupEl.innerHTML = sortedGroups.map(([g, count]) => {
