@@ -166,7 +166,62 @@
     border-radius: 10px;
     flex-shrink: 0;
   }
-  .sidebar-filter.active .sidebar-count { background: rgba(0,0,0,0.08); }
+  .sidebar-group-row {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .sidebar-group-row .sidebar-filter {
+    flex: 1;
+    padding-right: 8px;
+  }
+  .sidebar-dots {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 28px;
+    flex-shrink: 0;
+    cursor: pointer;
+    color: var(--text3);
+    font-size: 16px;
+    border-radius: 4px;
+    margin-right: 6px;
+    background: none;
+    border: none;
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1;
+    letter-spacing: 1px;
+  }
+  .sidebar-group-row:hover .sidebar-dots { display: flex; }
+  .sidebar-dots:hover { background: var(--surface2); color: var(--red); }
+  .sidebar-menu {
+    position: absolute;
+    right: 6px;
+    top: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    z-index: 50;
+    min-width: 160px;
+    overflow: hidden;
+  }
+  .sidebar-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--red);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .sidebar-menu-item:hover { background: var(--red-bg); }
 
   /* MAIN */
   .main { flex: 1; max-width: 860px; padding: 32px 28px; min-width: 0; }
@@ -1008,6 +1063,42 @@ function getProductGroup(name) {
 let selectedGroups = new Set(); // empty = show nothing until selected
 let selectedPriorities = new Set();
 
+let openMenu = null;
+
+function toggleGroupMenu(group, btn) {
+  // Close any open menu
+  document.querySelectorAll('.sidebar-menu').forEach(m => m.remove());
+  if (openMenu === group) { openMenu = null; return; }
+  openMenu = group;
+
+  const safeG = group.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const menu = document.createElement('div');
+  menu.className = 'sidebar-menu';
+  menu.innerHTML = `<button class="sidebar-menu-item" onclick="batchDeleteGroup('${safeG}')">🗑 Delete all products</button>`;
+  btn.parentElement.appendChild(menu);
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function closeMenu(e) {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        openMenu = null;
+        document.removeEventListener('click', closeMenu);
+      }
+    });
+  }, 10);
+}
+
+async function batchDeleteGroup(group) {
+  document.querySelectorAll('.sidebar-menu').forEach(m => m.remove());
+  const count = products.filter(p => getProductGroup(p.name) === group).length;
+  if (!confirm(`Delete all ${count} products in "${group}"? This cannot be undone.`)) return;
+  products = products.filter(p => getProductGroup(p.name) !== group);
+  selectedGroups.delete(group);
+  render();
+  await saveProducts();
+}
+
 function toggleGroupFilter(group) {
   if (selectedGroups.has(group)) selectedGroups.delete(group);
   else selectedGroups.add(group);
@@ -1059,10 +1150,17 @@ function renderSidebar() {
     const sortedGroups = Object.entries(groupCounts).sort((a,b) => a[0].localeCompare(b[0]));
     groupEl.innerHTML = sortedGroups.map(([g, count]) => {
       const active = selectedGroups.has(g);
-      return `<button class="sidebar-filter ${active ? 'active' : ''}" onclick="toggleGroupFilter('${g.replace(/'/g, "\\'")}')" title="${g}">
-        <span class="sidebar-filter-name">${g}</span>
-        <span class="sidebar-count">${count}</span>
-      </button>`;
+      const safeG = g.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      const dotsBtn = role === 'coy'
+        ? `<button class="sidebar-dots" onclick="event.stopPropagation();toggleGroupMenu('${safeG}',this)" title="Options">···</button>`
+        : '';
+      return `<div class="sidebar-group-row">
+        <button class="sidebar-filter ${active ? 'active' : ''}" onclick="toggleGroupFilter('${safeG}')" title="${g}">
+          <span class="sidebar-filter-name">${g}</span>
+          <span class="sidebar-count">${count}</span>
+        </button>
+        ${dotsBtn}
+      </div>`;
     }).join('');
   }
 }
