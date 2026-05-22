@@ -314,7 +314,7 @@
     text-transform: uppercase;
     letter-spacing: 0.07em;
     color: var(--text3);
-    padding: 10px 18px 0;
+    padding: 10px 18px 8px;
     border-top: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -973,8 +973,8 @@ function renderSections() {
             html += `<div class="product-group">
               <div class="group-label">
                 <span>${group}</span>
-                ${groupChecks ? `<div style="display:flex;align-items:center;gap:16px;">${groupChecks}</div>` : ''}
               </div>
+              ${groupChecks ? `<div style="display:flex;align-items:center;gap:20px;padding:8px 18px;background:var(--surface);border-bottom:1px solid var(--border);">${groupChecks}</div>` : ''}
               <div class="group-assets">
                 <div class="group-asset-item">
                   <span class="asset-label">📄 Doc</span>
