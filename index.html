@@ -528,13 +528,7 @@ async function loadData() {
     if (row.id === 'state') taskState = row.data || {};
     if (row.id === 'products') products = row.data || [];
   }
-  if (products.length === 0) {
-    products = [
-      { id: 'gtt-olive-' + Date.now(), name: 'Go To Tee — new color', overrides: { content: { copy_guide: true, aplus: true } } },
-      { id: 'ph-new-' + Date.now(), name: 'Performance Hoodie — new style', overrides: {} },
-    ];
-    await saveProducts();
-  }
+
 }
 
 async function saveState() {
