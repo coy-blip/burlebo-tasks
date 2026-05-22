@@ -20,35 +20,61 @@
     --green: #4ade80;
     --red: #f87171;
     --yellow: #fbbf24;
+    --radius: 10px;
+    --radius-sm: 6px;
+
+    --coy: #ff6b35;       --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa;  --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;     --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8;  --employee-bg: rgba(56, 189, 248, 0.15);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
   body { min-height: 100vh; }
+
   header {
     border-bottom: 1px solid var(--border);
-    padding: 20px 32px;
+    padding: 18px 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     background: var(--panel);
   }
   header h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-  header nav { display: flex; gap: 18px; }
+  header nav { display: flex; gap: 18px; align-items: center; }
   header nav a {
     color: var(--text-dim);
     text-decoration: none;
     font-size: 14px;
     font-weight: 500;
-    transition: color 0.15s;
   }
   header nav a:hover { color: var(--text); }
   header nav a.active { color: var(--accent); }
+  .role-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy      { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin    { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
   main { max-width: 1200px; margin: 0 auto; padding: 32px; }
+  main.hidden { display: none; }
+
   h2 { font-size: 14px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 16px 0; }
+
   .banner {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius);
     padding: 20px 24px;
     margin-bottom: 24px;
     display: flex;
@@ -59,9 +85,10 @@
   .banner .label { font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
   .banner .value { font-size: 18px; font-weight: 600; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-  .status-dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
-  .status-dot.err { background: var(--red); box-shadow: 0 0 8px rgba(248, 113, 113, 0.5); }
+  .status-dot.ok      { background: var(--green); box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+  .status-dot.err     { background: var(--red);   box-shadow: 0 0 8px rgba(248, 113, 113, 0.5); }
   .status-dot.pending { background: var(--yellow); }
+
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -80,13 +107,10 @@
     margin-bottom: 8px;
     word-break: break-all;
   }
-  .card .count {
-    font-size: 22px;
-    font-weight: 600;
-  }
+  .card .count { font-size: 22px; font-weight: 600; }
   .card .count.zero { color: var(--text-dim); }
-  .card .count.has { color: var(--text); }
   .card .label-below { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
   .footer-note {
     margin-top: 32px;
     padding: 16px;
@@ -105,19 +129,129 @@
     font-size: 12px;
     color: var(--accent);
   }
+
+  /* ---- Role modal ---- */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .modal-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+  }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub   { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 13px 14px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy      { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin    { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input {
+    width: 100%;
+    padding: 11px 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    outline: none;
+    margin-bottom: 8px;
+  }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+  .pw-btn {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+  }
+  .pw-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .pw-btn.primary:hover { opacity: 0.9; }
+  .pw-btn.ghost { background: transparent; color: var(--text-dim); }
+  .pw-btn.ghost:hover { color: var(--text); }
 </style>
 </head>
 <body>
 
-<header>
+<!-- ===== Role-pick modal ===== -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')">
+        <span class="dot coy"></span> Coy Needham (Owner)
+      </button>
+      <button class="modal-option" onclick="pickRole('designer')">
+        <span class="dot designer"></span> Graphic Designer
+      </button>
+      <button class="modal-option" onclick="pickRole('admin')">
+        <span class="dot admin"></span> Executive Admin
+      </button>
+      <button class="modal-option" onclick="pickRole('employee')">
+        <span class="dot employee"></span> Employee
+      </button>
+    </div>
+
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password"
+             onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="pw-btn ghost" onclick="cancelPw()">Back</button>
+        <button class="pw-btn primary" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Main UI ===== -->
+<header id="app-header" style="display:none;">
   <h1>Burlebo Analytics</h1>
   <nav>
     <a href="/">Tracker</a>
     <a href="/dashboard.html" class="active">Dashboard</a>
+    <span class="role-pill" id="role-pill" onclick="logout()" title="Click to switch role"></span>
   </nav>
 </header>
 
-<main>
+<main id="app-main" class="hidden">
   <div class="banner" id="connection-banner">
     <div>
       <div class="label">Supabase connection</div>
@@ -133,9 +267,9 @@
   <div class="grid" id="tables-grid"></div>
 
   <div class="footer-note">
-    <strong style="color: var(--text);">Phase 1 — Plumbing check.</strong><br>
-    This page proves the deploy pipeline + Supabase connection work. If every table shows a count (even 0), we're good.
-    Next phase: real authentication, then the CSV upload flow. After that, real dashboard pages.
+    <strong style="color: var(--text);">Phase 2 — Auth in place.</strong><br>
+    The role gate matches the tracker. Click your role pill in the header to log out and switch.
+    Next phase: the CSV upload flow so we can start putting real data in.
     <br><br>
     Current URL: <code id="current-url"></code>
   </div>
@@ -146,7 +280,16 @@
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // The 9 dashboard tables we created in schema_v2.sql
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+
+  let role = null;
+  let pendingRole = null;
+
   const TABLES = [
     { name: 'product_groups',         label: 'product groups' },
     { name: 'product_group_prefixes', label: 'sku prefixes' },
@@ -159,7 +302,55 @@
     { name: 'uploads',                label: 'upload events' },
   ];
 
-  document.getElementById('current-url').textContent = window.location.href;
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+
+  function checkPw() {
+    if (!pendingRole) return;
+    const val = document.getElementById('pw-input').value;
+    if (val === ROLES[pendingRole].password) {
+      enterApp(pendingRole);
+    } else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+
+    load();
+  }
+
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
 
   function setStatus(state, msg) {
     const dot = document.getElementById('conn-dot');
@@ -169,9 +360,6 @@
   }
 
   async function checkTable(t) {
-    // Note: Phase 1 uses anon key (no auth yet). RLS allows authenticated only,
-    // so unauthenticated count requests return 0 rows but no error.
-    // In Phase 2 we add login and you'll see real counts.
     const { count, error } = await sb
       .from(t.name)
       .select('*', { count: 'exact', head: true });
@@ -180,6 +368,8 @@
   }
 
   async function load() {
+    document.getElementById('current-url').textContent = window.location.href;
+
     const grid = document.getElementById('tables-grid');
     grid.innerHTML = TABLES.map(t => `
       <div class="card" id="card-${t.name}">
@@ -204,9 +394,7 @@
         card.querySelector('.label-below').textContent = r.error.slice(0, 60);
       } else {
         countEl.textContent = r.count.toLocaleString();
-        countEl.classList.remove('zero');
-        if (r.count > 0) countEl.classList.add('has');
-        else countEl.classList.add('zero');
+        if (r.count > 0) countEl.classList.remove('zero');
         total += r.count;
       }
     }
@@ -219,12 +407,6 @@
       setStatus('ok', `Connected — ${total.toLocaleString()} total rows visible`);
     }
   }
-
-  load().catch(e => {
-    setStatus('err', 'Failed: ' + e.message);
-    document.getElementById('tables-grid').innerHTML =
-      `<div class="card" style="grid-column: 1 / -1; color: var(--red);">${e.message}</div>`;
-  });
 </script>
 
 </body>
