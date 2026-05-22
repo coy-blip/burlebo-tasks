@@ -994,17 +994,20 @@ async function uploadGroupDoc(group, input) {
   if (!file) return;
   const groupKey = 'content|' + encodeURIComponent(group);
   const statusEl = document.getElementById('doc-status-' + groupKey);
-  if (statusEl) { statusEl.style.display = 'inline'; }
+  if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = 'Uploading...'; }
 
-  const fileName = group.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now() + '_' + file.name;
-  const { data, error } = await sb.storage.from('documents').upload(fileName, file, { upsert: true });
+  // Sanitize filename — no special chars
+  const safeName = group.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now() + '_' + file.name.replace(/[^a-z0-9._-]/gi, '_');
+
+  const { data, error } = await sb.storage.from('documents').upload(safeName, file, { upsert: true });
 
   if (error) {
-    if (statusEl) statusEl.textContent = 'Upload failed.';
+    console.error('Upload error:', error);
+    if (statusEl) statusEl.textContent = 'Failed: ' + (error.message || error.error || JSON.stringify(error));
     return;
   }
 
-  const { data: urlData } = sb.storage.from('documents').getPublicUrl(fileName);
+  const { data: urlData } = sb.storage.from('documents').getPublicUrl(safeName);
   if (!groupAssets[group]) groupAssets[group] = {};
   groupAssets[group].docName = file.name;
   groupAssets[group].docUrl = urlData.publicUrl;
@@ -1335,7 +1338,7 @@ function renderSections() {
                          ${role === 'coy' ? `<button class="asset-clear" onclick="clearGroupDoc('${group}')" title="Remove">✕</button>` : ''}`
                       : role === 'coy'
                         ? `<span id="doc-status-${groupKey}" class="asset-uploading" style="display:none;">Uploading...</span>
-                           <input type="file" id="doc-input-${groupKey}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc('${group}', this)" />
+                           <input type="file" id="doc-input-${groupKey}" data-group="${group.replace(/"/g,'&quot;')}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc(this.dataset.group, this)" />
                            <button class="asset-btn" onclick="document.getElementById('doc-input-${groupKey}').click()">+ Upload copywriting doc</button>`
                         : `<span style="font-size:12px;color:var(--text3);">No copywriting doc yet</span>`
                     }
