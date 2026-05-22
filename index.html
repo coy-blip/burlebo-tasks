@@ -68,6 +68,19 @@
   }
   .header-logo span { color: var(--text3); }
   .header-right { display: flex; align-items: center; gap: 12px; }
+  .dashboard-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    background: var(--surface2);
+    border-radius: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    transition: background 0.12s;
+  }
+  .dashboard-link:hover { background: var(--surface3, #2a2f38); color: var(--text); }
   .sync-indicator {
     display: flex;
     align-items: center;
@@ -734,6 +747,7 @@
   <header class="header">
     <div class="header-logo">Burlebo <span>/</span> Launch Tracker</div>
     <div class="header-right">
+      <a href="/snapshot.html" class="dashboard-link" title="Burlebo Analytics Dashboard">📊 Dashboard</a>
       <div class="sync-indicator">
         <div class="sync-dot" id="sync-dot"></div>
         <span id="sync-text">Synced</span>
