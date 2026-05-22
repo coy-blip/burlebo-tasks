@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FBA Lookout — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8; --purple: #a78bfa;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--panel); }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+  main.hidden { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 24px 0; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; }
+  .ctrl-label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+  .btn { padding: 7px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.92; }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+  .btn.ghost:hover { color: var(--text); }
+
+  .kpi-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 700px) { .kpi-row-2 { grid-template-columns: 1fr; } }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .kpi.orange::before { background: var(--accent); }
+  .kpi.blue::before { background: var(--blue); }
+  .kpi-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .kpi-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .section-hdr { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 8px; gap: 12px; flex-wrap: wrap; }
+  .section-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+  .section-sub { font-size: 12px; color: var(--text-dim); }
+
+  .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--panel-2); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+  td.r, th.r { text-align: right; }
+  td.mono { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  .group-spacer td { background: var(--bg); padding: 4px 0; border: none; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; }
+  .empty-title { font-size: 15px; margin-bottom: 4px; color: var(--text); }
+  .empty-sub { font-size: 13px; max-width: 480px; margin: 0 auto; line-height: 1.5; }
+  .loading { color: var(--text-dim); font-size: 14px; padding: 40px 0; text-align: center; }
+
+  /* Role modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 13px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input { width: 100%; padding: 11px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; margin-bottom: 8px; }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Role modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
+      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
+      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
+      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
+    </div>
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
+        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav">
+    <span class="role-pill" id="role-pill" onclick="logout()"></span>
+  </nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">FBA Lookout</div>
+  <div class="page-sub">Non-FBA styles already selling well enough — and with enough HQ stock — to launch on FBA</div>
+
+  <div class="controls">
+    <button class="btn primary" onclick="loadLookout()">🔄 Run Lookout</button>
+    <span class="ctrl-label" id="lookout-run-date"></span>
+  </div>
+
+  <div id="lookout-content">
+    <div class="empty"><div class="empty-icon">🔥</div><div class="empty-title">Click Run Lookout to find launch candidates</div></div>
+  </div>
+</main>
+
+<script>
+  // ============================================================================
+  // Shared nav loader
+  // ============================================================================
+  async function loadSharedNav() {
+    try {
+      const r = await fetch('/nav.html', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const html = await r.text();
+      const nav = document.getElementById('main-nav');
+      const pill = document.getElementById('role-pill');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const here = window.location.pathname.replace(/\/$/, '') || '/';
+      for (const a of tmp.querySelectorAll('a')) {
+        const href = a.getAttribute('href');
+        if (href === here || (href === '/' && here === '/')) a.classList.add('active');
+        nav.insertBefore(a, pill);
+      }
+    } catch (err) {
+      console.error('Nav load failed:', err);
+    }
+  }
+
+  // ============================================================================
+  // Supabase + auth
+  // ============================================================================
+  const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+  let role = null;
+  let pendingRole = null;
+
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+  function checkPw() {
+    if (!pendingRole) return;
+    if (document.getElementById('pw-input').value === ROLES[pendingRole].password) enterApp(pendingRole);
+    else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+    loadSharedNav();
+    loadLookout();
+  }
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
+
+  // ============================================================================
+  // Helpers (UTC-safe)
+  // ============================================================================
+  function toISO(d) { return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0'); }
+  function parseISO(s) {
+    if (!s) return null;
+    const parts = String(s).slice(0,10).split('-').map(n => parseInt(n,10));
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    return new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
+  }
+  function daysBetween(a, b) { return Math.round((b.getTime() - a.getTime()) / 86400000); }
+  function fmtN(n) { if (n==null) return '—'; return Math.round(n).toLocaleString(); }
+  function formatLongDate(iso) {
+    const d = parseISO(iso);
+    if (!d) return iso;
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  }
+
+  // ============================================================================
+  // SKU helpers (mirroring fba_inventory_processor.py)
+  // ============================================================================
+  const MENS_SIZES  = ["S", "M", "L", "XL", "XXL"];
+  const YOUTH_SIZES = ["2T", "3T", "4T", "XS", "S", "M", "L", "XL"];
+  const BABY_SIZES  = ["NB", "0/3", "3/6", "6/12", "12/18"];
+  const ONE_SIZE_PREFIXES = ["BP-", "C-", "DB-"];
+
+  // Thresholds from fba_lookout.py
+  const MIN_7D = 3;
+  const MIN_30D = 10;
+  const MIN_SHIP_IF_7D_ZERO = 6;
+  const MIN_TOTAL_PER_SIZE = 50;
+
+  function stripFba(sku) {
+    const s = String(sku || '').toUpperCase().trim();
+    if (s.startsWith('FBA2-')) return s.slice(5);
+    if (s.startsWith('FBA-'))  return s.slice(4);
+    return s;
+  }
+  function isYouth(sku) { return stripFba(sku).startsWith('Y-'); }
+  function isBaby(sku)  { return stripFba(sku).startsWith('BZU-'); }
+  function isOneSize(sku) {
+    const s = stripFba(sku);
+    return ONE_SIZE_PREFIXES.some(p => s.startsWith(p));
+  }
+  function baseStyle(sku) {
+    const s = stripFba(sku);
+    if (isOneSize(sku)) return s;
+    const idx = s.lastIndexOf('-');
+    return idx !== -1 ? s.slice(0, idx) : s;
+  }
+
+  function expandFamily(sku) {
+    const s = stripFba(sku);
+    if (isOneSize(sku)) return [s];
+    const style = baseStyle(sku);
+    if (isBaby(sku))  return BABY_SIZES.map(sz => `${style}-${sz}`);
+    if (isYouth(sku)) return YOUTH_SIZES.map(sz => `${style}-${sz}`);
+    return MENS_SIZES.map(sz => `${style}-${sz}`);
+  }
+
+  // ============================================================================
+  // Lookout calculator — port of fba_lookout.py
+  // ============================================================================
+  function buildLookout(fbaRows, blbInventoryByShopifySku, salesWindow, latestSalesISO) {
+    const latestDate = latestSalesISO ? parseISO(latestSalesISO) : null;
+    if (!latestDate) return { rows: [], shipment_list: [], total_units: 0 };
+
+    // Aggregate non-FBA sales by SKU with 7/30/60 day windows
+    const skuAgg = new Map(); // sku -> {u7, u30, u60}
+    for (const r of salesWindow) {
+      if (r.is_fba) continue;
+      const sku = String(r.sku || '').toUpperCase();
+      if (!sku) continue;
+      const dateStr = (r.date instanceof Date) ? toISO(r.date) : String(r.date).slice(0, 10);
+      const d = parseISO(dateStr);
+      if (!d) continue;
+      const diff = daysBetween(d, latestDate);
+      let v = skuAgg.get(sku);
+      if (!v) { v = { u7: 0, u30: 0, u60: 0 }; skuAgg.set(sku, v); }
+      if (diff <= 6)  v.u7  += r.units || 0;
+      if (diff <= 29) v.u30 += r.units || 0;
+      if (diff <= 59) v.u60 += r.units || 0;
+    }
+
+    // Build the set of SKUs already in FBA (cleaned form)
+    const fbaSkuSet = new Set();
+    for (const row of fbaRows) {
+      const raw = String(row.raw_sku || '').toUpperCase();
+      if (raw.startsWith('FBA-') || raw.startsWith('FBA2-')) {
+        fbaSkuSet.add(String(row.sku || '').toUpperCase());
+      }
+    }
+
+    // Trigger SKUs
+    const triggers = [];
+    for (const [sku, agg] of skuAgg.entries()) {
+      if (agg.u7 >= MIN_7D && agg.u30 >= MIN_30D) triggers.push(sku);
+    }
+
+    // For each trigger, expand family and check filters
+    const familyMap = new Map(); // style_key -> [skus...]
+    for (const trigger of triggers) {
+      const family = expandFamily(trigger);
+      if (!family.length) continue;
+
+      // Skip if any family member is already in FBA
+      const anyInFba = family.some(s => fbaSkuSet.has(s));
+      if (anyInFba) continue;
+
+      // Every size must have ≥ MIN_TOTAL_PER_SIZE at HQ
+      const allInStock = family.every(s => {
+        const stock = blbInventoryByShopifySku.get(s) || 0;
+        return stock >= MIN_TOTAL_PER_SIZE;
+      });
+      if (!allInStock) continue;
+
+      const styleKey = baseStyle(trigger);
+      if (!familyMap.has(styleKey)) familyMap.set(styleKey, family);
+    }
+
+    if (familyMap.size === 0) return { rows: [], shipment_list: [], total_units: 0, run_date: latestSalesISO };
+
+    // Build output
+    const rows = [];
+    const shipmentList = [];
+    let totalUnits = 0;
+
+    for (const styleKey of [...familyMap.keys()].sort()) {
+      const familySkus = familyMap.get(styleKey);
+      for (const shopifySku of familySkus) {
+        const agg = skuAgg.get(shopifySku) || { u7: 0, u30: 0, u60: 0 };
+        let needed = Math.max(agg.u60, MIN_SHIP_IF_7D_ZERO);
+        if (needed < MIN_SHIP_IF_7D_ZERO) needed = MIN_SHIP_IF_7D_ZERO;
+        const blbStock = blbInventoryByShopifySku.get(shopifySku) || 0;
+
+        rows.push({
+          shopify_sku: shopifySku,
+          style_key: styleKey,
+          u7: agg.u7, u30: agg.u30, u60: agg.u60,
+          recommended: needed,
+          blb_available: blbStock,
+        });
+        shipmentList.push({
+          amazon_sku: `FBA-${shopifySku}`,
+          shopify_sku: shopifySku,
+          units: needed,
+        });
+        totalUnits += needed;
+      }
+    }
+
+    return {
+      rows, shipment_list: shipmentList, total_units: totalUnits,
+      run_date: latestSalesISO,
+      family_count: familyMap.size,
+    };
+  }
+
+  // ============================================================================
+  // Data load
+  // ============================================================================
+  async function fetchPaged(table, columns, filters = []) {
+    const all = [];
+    let from = 0;
+    const page = 1000;
+    while (true) {
+      let q = sb.from(table).select(columns);
+      for (const [k, op, v] of filters) q = q[op](k, v);
+      q = q.range(from, from + page - 1);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < page) break;
+      from += page;
+    }
+    return all;
+  }
+
+  async function loadLookout() {
+    document.getElementById('lookout-content').innerHTML = '<div class="loading">Running lookout — checking sales velocity, FBA presence, HQ stock…</div>';
+
+    try {
+      // Latest sales date
+      const { data: latestSales } = await sb.from('sales_daily').select('date').order('date', { ascending: false }).limit(1);
+      const latestSalesDate = (latestSales && latestSales[0])
+        ? ((latestSales[0].date instanceof Date) ? toISO(latestSales[0].date) : String(latestSales[0].date).slice(0,10))
+        : null;
+      if (!latestSalesDate) {
+        document.getElementById('lookout-content').innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">No sales data uploaded yet</div><div class="empty-sub">Upload at least 30 days of sales for the lookout to find candidates.</div></div>';
+        return;
+      }
+
+      // Last 60 days of sales (covers u7, u30, u60 windows)
+      const startDate = parseISO(latestSalesDate);
+      startDate.setUTCDate(startDate.getUTCDate() - 59);
+      const startStr = toISO(startDate);
+
+      const [salesWindow, fba, blb] = await Promise.all([
+        fetchPaged('sales_daily', 'date, sku, units, is_fba',
+          [['date', 'gte', startStr], ['date', 'lte', latestSalesDate]]),
+        fetchPaged('fba_inventory_snapshot', 'sku, raw_sku'),
+        fetchPaged('blb_inventory_snapshot', 'sku, channel, location, on_hand_avail',
+          [['location', 'eq', 'HQ']]),
+      ]);
+
+      // Build BLB index: shopifySku -> total HQ stock (ecom + wholesale)
+      const blbIndex = new Map();
+      for (const r of blb) {
+        const ch = String(r.channel || '').toLowerCase();
+        if (ch !== 'ecommerce' && ch !== 'wholesale') continue;
+        const sku = String(r.sku || '').toUpperCase();
+        if (!sku) continue;
+        blbIndex.set(sku, (blbIndex.get(sku) || 0) + (r.on_hand_avail || 0));
+      }
+
+      const result = buildLookout(fba, blbIndex, salesWindow, latestSalesDate);
+      window._lookoutData = result;
+      renderLookout();
+    } catch (err) {
+      document.getElementById('lookout-content').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Error</div><div class="empty-sub">${err.message}</div></div>`;
+    }
+  }
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+  function renderLookout() {
+    const d = window._lookoutData;
+    if (!d) return;
+
+    document.getElementById('lookout-run-date').textContent = d.run_date ? `Based on sales through: ${formatLongDate(d.run_date)}` : '';
+
+    if (!d.rows || d.rows.length === 0) {
+      document.getElementById('lookout-content').innerHTML = `
+        <div class="empty">
+          <div class="empty-icon">🔥</div>
+          <div class="empty-title">No products flagged for FBA</div>
+          <div class="empty-sub">A style qualifies when it has 3+ units sold in 7 days, 10+ in 30 days,
+            is <em>not</em> already in FBA, and has 50+ units per size at HQ.</div>
+        </div>`;
+      return;
+    }
+
+    let html = '<div class="kpi-row-2">';
+    html += `<div class="kpi orange"><div class="kpi-label">Total Units to Send</div><div class="kpi-value">${fmtN(d.total_units)}</div></div>`;
+    html += `<div class="kpi blue"><div class="kpi-label">SKU Families Flagged</div><div class="kpi-value">${fmtN(d.family_count || 0)}</div></div>`;
+    html += '</div>';
+
+    html += '<div class="grid-2">';
+
+    // Left — velocity detail
+    html += '<div>';
+    html += '<div class="section-hdr"><div class="section-title">Velocity Detail</div><div class="section-sub">Per-SKU breakdown of triggering families</div></div>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>Shopify SKU</th><th class="r">7D</th><th class="r">30D</th><th class="r">60D</th><th class="r">Send</th><th class="r">HQ Stock</th>';
+    html += '</tr></thead><tbody>';
+
+    let prevStyle = null;
+    for (const r of d.rows) {
+      if (prevStyle !== null && prevStyle !== r.style_key) {
+        html += '<tr class="group-spacer"><td colspan="6"></td></tr>';
+      }
+      prevStyle = r.style_key;
+      html += `<tr>
+        <td class="mono">${r.shopify_sku}</td>
+        <td class="r">${fmtN(r.u7)}</td>
+        <td class="r">${fmtN(r.u30)}</td>
+        <td class="r">${fmtN(r.u60)}</td>
+        <td class="r" style="font-weight:700;color:var(--accent);">${fmtN(r.recommended)}</td>
+        <td class="r">${fmtN(r.blb_available)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div></div>';
+
+    // Right — shipment list
+    html += '<div>';
+    html += '<div class="section-hdr"><div class="section-title">Shipment List</div>';
+    html += '<button class="btn primary" style="font-size:12px;padding:5px 10px;" onclick="exportLookout()">⬇️ Export CSV</button></div>';
+    html += '<div class="table-wrap"><table><thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units</th></tr></thead><tbody>';
+    for (const r of d.shipment_list) {
+      html += `<tr><td class="mono">${r.amazon_sku}</td><td class="mono">${r.shopify_sku}</td><td class="r" style="font-weight:700;">${fmtN(r.units)}</td></tr>`;
+    }
+    html += '</tbody></table></div></div>';
+
+    html += '</div>';
+    document.getElementById('lookout-content').innerHTML = html;
+  }
+
+  function exportLookout() {
+    const d = window._lookoutData;
+    if (!d || !d.shipment_list || !d.shipment_list.length) return;
+    const csv = ['Amazon SKU,Shopify SKU,Units'];
+    for (const r of d.shipment_list) csv.push([r.amazon_sku, r.shopify_sku, r.units].join(','));
+    const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fba-lookout-${d.run_date || 'export'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+</script>
+
+</body>
+</html>
