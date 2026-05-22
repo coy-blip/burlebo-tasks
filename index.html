@@ -1334,9 +1334,11 @@ function renderSections() {
 
           html += `<div class="product-row">
             <div class="product-header" onclick="toggleProduct('${pkey}')">
-              <span class="product-name">${product.name}</span>
-              <div class="product-right">
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+                <span class="product-name">${product.name}</span>
                 ${liveCheck}
+              </div>
+              <div class="product-right">
                 ${pri ? `<span ${priStyle}>${PRIORITIES[pri].label}</span>` : ''}
                 <span class="badge ${badgeClass}">${badgeLabel}</span>
                 ${role === 'coy' ? `<button class="delete-btn" onclick="event.stopPropagation();deleteProduct('${product.id}')" title="Remove product">&#10005;</button>` : ''}
