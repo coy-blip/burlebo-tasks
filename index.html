@@ -306,6 +306,19 @@
   .product-header:hover .delete-btn { opacity: 1; }
   .delete-btn:hover { color: var(--red); background: var(--red-bg); }
 
+  /* PRODUCT GROUPS */
+  .product-group { }
+  .group-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text3);
+    padding: 10px 18px 6px;
+    border-top: 1px solid var(--border);
+  }
+  .product-group:first-child .group-label { border-top: none; }
+
   /* EMPTY */
   .empty { padding: 28px 18px; text-align: center; color: var(--text3); font-size: 13px; }
 
@@ -433,9 +446,9 @@
 <div class="modal-overlay" id="role-modal" style="display:none;">
   <div class="modal">
     <div class="modal-title">Who are you?</div>
-    <div class="modal-sub">Choose your role to get started. You can switch anytime.</div>
+    <div class="modal-sub">Choose your role to get started.</div>
     <div class="modal-options">
-      <button class="modal-option opt-coy" onclick="selectRole('coy')">
+      <button class="modal-option opt-coy" onclick="promptCoyPassword()">
         <div class="modal-option-icon coy">C</div>
         <div>
           <div class="modal-option-name">Coy</div>
@@ -449,6 +462,11 @@
           <div class="modal-option-desc">A+ content + PDP images</div>
         </div>
       </button>
+    </div>
+    <div id="pw-field" style="display:none;margin-top:16px;">
+      <input id="coy-pw" type="password" placeholder="Enter password" style="width:100%;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;margin-bottom:8px;" onkeydown="if(event.key==='Enter')checkCoyPassword()" />
+      <div id="pw-error" style="display:none;font-size:12px;color:var(--red);margin-bottom:8px;">Incorrect password.</div>
+      <button class="btn btn-primary" style="width:100%;" onclick="checkCoyPassword()">Continue as Coy</button>
     </div>
   </div>
 </div>
@@ -474,7 +492,7 @@
 
     <div class="stats-row" id="stats-row"></div>
 
-    <div class="add-bar">
+    <div class="add-bar" id="add-bar" style="display:none;">
       <input type="text" id="new-product-input" placeholder="Add product — e.g. Go To Tee, olive colorway" />
       <button class="btn btn-primary" onclick="addProduct()">+ Add product</button>
       <button class="btn" onclick="document.getElementById('xlsx-upload').click()">&#8593; Import Excel</button>
@@ -588,15 +606,41 @@ async function deleteProduct(id) {
   await saveProducts();
 }
 
+function promptCoyPassword() {
+  document.getElementById('pw-field').style.display = 'block';
+  document.getElementById('coy-pw').focus();
+}
+
+function checkCoyPassword() {
+  const val = document.getElementById('coy-pw').value;
+  if (val === 'coyneedham') {
+    document.getElementById('pw-error').style.display = 'none';
+    selectRole('coy');
+  } else {
+    document.getElementById('pw-error').style.display = 'block';
+    document.getElementById('coy-pw').value = '';
+    document.getElementById('coy-pw').focus();
+  }
+}
+
 function selectRole(r) {
   role = r;
   document.getElementById('role-modal').style.display = 'none';
+  document.getElementById('pw-field').style.display = 'none';
+  document.getElementById('add-bar').style.display = role === 'coy' ? 'flex' : 'none';
   updateRoleUI();
   render();
 }
 
 function switchRole(r) {
+  if (r === 'coy') {
+    // Re-show modal with password prompt
+    document.getElementById('role-modal').style.display = 'flex';
+    promptCoyPassword();
+    return;
+  }
   role = r;
+  document.getElementById('add-bar').style.display = 'none';
   updateRoleUI();
   render();
 }
@@ -668,6 +712,32 @@ function renderStats() {
   `;
 }
 
+const PRIORITIES = { high: { label: 'High', color: '#9B1C1C', bg: '#FDF2F2' }, medium: { label: 'Medium', color: '#92400E', bg: '#FFFBEB' }, low: { label: 'Low', color: '#057A55', bg: '#F0FAF4' } };
+
+async function setPriority(productId, priority) {
+  const p = products.find(x => x.id === productId);
+  if (p) { p.priority = priority; }
+  render();
+  await saveProducts();
+}
+
+function getProductGroup(name) {
+  // Extract base product line from name (everything before the dash)
+  const match = name.match(/^([^—\-]+)/);
+  return match ? match[1].trim() : name;
+}
+
+function getSortedProducts() {
+  // Group by product line, then sort by priority within each group
+  const priorityOrder = { high: 0, medium: 1, low: 2, undefined: 3 };
+  return [...products].sort((a, b) => {
+    const ga = getProductGroup(a.name);
+    const gb = getProductGroup(b.name);
+    if (ga !== gb) return ga.localeCompare(gb);
+    return (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
+  });
+}
+
 function renderSections() {
   const container = document.getElementById('sections-container');
   let html = '';
@@ -695,26 +765,45 @@ function renderSections() {
       if (products.length === 0) {
         html += `<div class="empty">No products yet — add one above to get started.</div>`;
       } else {
-        for (const product of products) {
+        const sorted = getSortedProducts();
+        let lastGroup = null;
+        for (const product of sorted) {
+          const group = getProductGroup(product.name);
+          if (group !== lastGroup) {
+            if (lastGroup !== null) html += `</div>`;
+            html += `<div class="product-group"><div class="group-label">${group}</div>`;
+            lastGroup = group;
+          }
+
           const pkey = section.id + '|' + product.id;
           const status = productStatus(product.id, section.id);
           const isProductOpen = productCollapsed[pkey] !== true;
           const doneTasks = section.tasks.filter(t => getTaskDone(product.id, section.id, t.id)).length;
           const badgeClass = status === 'complete' ? 'badge-complete' : status === 'progress' ? 'badge-progress' : 'badge-pending';
           const badgeLabel = status === 'complete' ? 'Complete' : status === 'progress' ? `${doneTasks}/${section.tasks.length} done` : 'Not started';
+          const pri = product.priority;
+          const priStyle = pri ? `style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:10px;color:${PRIORITIES[pri].color};background:${PRIORITIES[pri].bg};"` : '';
 
           html += `<div class="product-row">
             <div class="product-header" onclick="toggleProduct('${pkey}')">
               <span class="product-name">${product.name}</span>
               <div class="product-right">
+                ${pri ? `<span ${priStyle}>${PRIORITIES[pri].label}</span>` : ''}
                 <span class="badge ${badgeClass}">${badgeLabel}</span>
-                <button class="delete-btn" onclick="event.stopPropagation();deleteProduct('${product.id}')" title="Remove product">&#10005;</button>
+                ${role === 'coy' ? `<button class="delete-btn" onclick="event.stopPropagation();deleteProduct('${product.id}')" title="Remove product">&#10005;</button>` : ''}
                 <span class="chevron ${isProductOpen ? 'open' : ''}" style="font-size:13px;">&#8964;</span>
               </div>
             </div>`;
 
           if (isProductOpen) {
             html += `<div class="task-list">`;
+            if (role === 'coy') {
+              html += `<div class="task-item" style="margin-bottom:6px;">
+                <span style="font-size:12px;color:var(--text3);margin-right:8px;">Priority:</span>
+                ${['high','medium','low'].map(p => `<button onclick="event.stopPropagation();setPriority('${product.id}','${p}')" style="margin-right:4px;padding:2px 10px;border-radius:10px;border:1px solid ${PRIORITIES[p].color};background:${pri===p?PRIORITIES[p].bg:'transparent'};color:${PRIORITIES[p].color};font-size:11px;font-weight:500;cursor:pointer;">${PRIORITIES[p].label}</button>`).join('')}
+                ${pri ? `<button onclick="event.stopPropagation();setPriority('${product.id}',null)" style="padding:2px 8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;cursor:pointer;">Clear</button>` : ''}
+              </div>`;
+            }
             for (const task of section.tasks) {
               const checked = getTaskDone(product.id, section.id, task.id);
               const override = isOverride(product.id, section.id, task.id);
@@ -736,6 +825,7 @@ function renderSections() {
           }
           html += `</div>`;
         }
+        if (lastGroup !== null) html += `</div>`; // close last group
       }
     }
     html += `</div>`;
