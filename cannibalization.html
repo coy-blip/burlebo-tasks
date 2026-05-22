@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cannibalization — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8; --purple: #a78bfa;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--panel); }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+  main.hidden { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 24px 0; }
+
+  /* Upload zones */
+  .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 800px) { .upload-grid { grid-template-columns: 1fr; } }
+  .upload-card {
+    background: var(--panel); border: 1px dashed var(--border);
+    border-radius: var(--radius); padding: 24px;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .upload-card:hover { border-color: var(--accent); background: var(--panel-2); }
+  .upload-card.has-files { border-style: solid; border-color: var(--green); }
+  .upload-card h3 { font-size: 14px; margin: 0 0 4px 0; }
+  .upload-card .upload-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 14px; line-height: 1.4; }
+  .upload-card input[type=file] { display: none; }
+  .upload-card label.file-btn {
+    display: inline-block;
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 16px;
+    border-radius: var(--radius-sm); cursor: pointer;
+    font-size: 13px; font-weight: 600;
+  }
+  .upload-card label.file-btn:hover { background: #1f242c; }
+  .file-list { margin-top: 12px; font-size: 12px; color: var(--text-dim); text-align: left; }
+  .file-list .file-item { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; background: var(--panel-2); border-radius: 4px; margin-top: 4px; font-family: 'SF Mono', Menlo, monospace; }
+  .file-list .file-item .x-btn { color: var(--red); cursor: pointer; padding: 0 4px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; }
+  .btn { padding: 7px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.92; }
+  .btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+
+  .kpi-row-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 600px) { .kpi-row-2 { grid-template-columns: 1fr; } }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .kpi.orange::before { background: var(--accent); }
+  .kpi.blue::before { background: var(--blue); }
+  .kpi-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .kpi-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+
+  .bucket-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+  @media (max-width: 800px) { .bucket-grid { grid-template-columns: 1fr; } }
+  .bucket-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; text-align: center; }
+  .bucket-label { font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
+  .bucket-pct { font-size: 40px; font-weight: 800; line-height: 1; }
+  .bucket-pct.orange { color: var(--accent); }
+  .bucket-pct.green { color: var(--green); }
+  .bucket-pct.muted { color: var(--text-dim); }
+  .bucket-count { font-size: 13px; color: var(--text); margin-top: 6px; }
+  .bucket-desc { font-size: 12px; color: var(--text-dim); margin-top: 6px; line-height: 1.4; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; }
+  .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--panel-2); }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+  td.r, th.r { text-align: right; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  .note { font-size: 12px; color: var(--text-dim); margin-top: 12px; line-height: 1.5; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; }
+  .empty-title { font-size: 15px; margin-bottom: 4px; color: var(--text); }
+  .empty-sub { font-size: 13px; max-width: 480px; margin: 0 auto; line-height: 1.5; }
+  .loading { color: var(--text-dim); font-size: 14px; padding: 40px 0; text-align: center; }
+  .progress-line { font-size: 13px; color: var(--text-dim); margin-top: 8px; }
+
+  /* Role modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 13px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input { width: 100%; padding: 11px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; margin-bottom: 8px; }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Role modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
+      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
+      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
+      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
+    </div>
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
+        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav">
+    <span class="role-pill" id="role-pill" onclick="logout()"></span>
+  </nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">Cannibalization Analysis</div>
+  <div class="page-sub">Match Amazon FBM customers against Shopify DTC customers by recipient name + zip code</div>
+
+  <div class="upload-grid">
+    <div class="upload-card" id="amz-card">
+      <h3>📦 Amazon FBM Orders</h3>
+      <div class="upload-sub">Tab-separated .txt file from Amazon Seller Central<br>Required columns: <span class="mono">recipient-name</span>, <span class="mono">ship-postal-code</span>, <span class="mono">purchase-date</span></div>
+      <label class="file-btn" for="amz-file">Choose Files</label>
+      <input type="file" id="amz-file" accept=".txt,.tsv,.csv" multiple onchange="addAmzFiles(this.files); this.value='';" />
+      <div class="file-list" id="amz-files"></div>
+    </div>
+    <div class="upload-card" id="shop-card">
+      <h3>🛒 Shopify DTC Orders</h3>
+      <div class="upload-sub">XLSX or CSV from Shopify (or BigQuery export)<br>Required columns: <span class="mono">first_name</span>, <span class="mono">last_name</span>, <span class="mono">ship_postal_code</span>, <span class="mono">order_created_at</span></div>
+      <label class="file-btn" for="shop-file">Choose Files</label>
+      <input type="file" id="shop-file" accept=".xlsx,.xls,.csv" multiple onchange="addShopFiles(this.files); this.value='';" />
+      <div class="file-list" id="shop-files"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="run-btn" onclick="runAnalysis()" disabled>🔀 Run Analysis</button>
+    <button class="btn ghost" onclick="clearAll()">Clear files</button>
+    <span style="font-size:12px;color:var(--text-dim);" id="status-line">Upload both file types to enable analysis</span>
+  </div>
+
+  <div id="results-content">
+    <div class="empty">
+      <div class="empty-icon">🔀</div>
+      <div class="empty-title">Customer Cannibalization Analysis</div>
+      <div class="empty-sub">Upload Amazon FBM and Shopify DTC order exports above, then click <b>Run Analysis</b>. Matching is done locally in your browser — files are never sent to a server.</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ============================================================================
+  // Shared nav loader
+  // ============================================================================
+  async function loadSharedNav() {
+    try {
+      const r = await fetch('/nav.html', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const html = await r.text();
+      const nav = document.getElementById('main-nav');
+      const pill = document.getElementById('role-pill');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const here = window.location.pathname.replace(/\/$/, '') || '/';
+      for (const a of tmp.querySelectorAll('a')) {
+        const href = a.getAttribute('href');
+        if (href === here || (href === '/' && here === '/')) a.classList.add('active');
+        nav.insertBefore(a, pill);
+      }
+    } catch (err) { console.error('Nav load failed:', err); }
+  }
+
+  // ============================================================================
+  // Role auth
+  // ============================================================================
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+  let role = null;
+  let pendingRole = null;
+
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+  function checkPw() {
+    if (!pendingRole) return;
+    if (document.getElementById('pw-input').value === ROLES[pendingRole].password) enterApp(pendingRole);
+    else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+    loadSharedNav();
+  }
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
+
+  // ============================================================================
+  // File state
+  // ============================================================================
+  const amzFiles = [];   // [{ name, file }]
+  const shopFiles = [];
+
+  function addAmzFiles(files) {
+    for (const f of files) amzFiles.push({ name: f.name, file: f });
+    refreshFileLists();
+  }
+  function addShopFiles(files) {
+    for (const f of files) shopFiles.push({ name: f.name, file: f });
+    refreshFileLists();
+  }
+  function removeFile(list, i) {
+    list.splice(i, 1);
+    refreshFileLists();
+  }
+  function clearAll() {
+    amzFiles.length = 0;
+    shopFiles.length = 0;
+    refreshFileLists();
+    document.getElementById('results-content').innerHTML = `<div class="empty"><div class="empty-icon">🔀</div><div class="empty-title">Files cleared</div><div class="empty-sub">Upload new Amazon FBM and Shopify DTC files to begin.</div></div>`;
+  }
+  function refreshFileLists() {
+    const amzEl = document.getElementById('amz-files');
+    amzEl.innerHTML = amzFiles.map((f, i) =>
+      `<div class="file-item"><span>${f.name}</span><span class="x-btn" onclick="removeFile(amzFiles, ${i})">✕</span></div>`
+    ).join('');
+    const shopEl = document.getElementById('shop-files');
+    shopEl.innerHTML = shopFiles.map((f, i) =>
+      `<div class="file-item"><span>${f.name}</span><span class="x-btn" onclick="removeFile(shopFiles, ${i})">✕</span></div>`
+    ).join('');
+    document.getElementById('amz-card').classList.toggle('has-files', amzFiles.length > 0);
+    document.getElementById('shop-card').classList.toggle('has-files', shopFiles.length > 0);
+    const ready = amzFiles.length > 0 && shopFiles.length > 0;
+    document.getElementById('run-btn').disabled = !ready;
+    document.getElementById('status-line').textContent = ready
+      ? `Ready: ${amzFiles.length} Amazon file${amzFiles.length===1?'':'s'} + ${shopFiles.length} Shopify file${shopFiles.length===1?'':'s'}`
+      : 'Upload both file types to enable analysis';
+  }
+
+  // ============================================================================
+  // Normalizers (port of cannibalization.py)
+  // ============================================================================
+  function normalizeName(name) {
+    if (!name) return '';
+    return String(name).trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+  function normalizeZip(z) {
+    if (!z) return '';
+    const s = String(z).trim().split('-')[0].trim();
+    if (!s) return '';
+    return s.padStart(5, '0');
+  }
+  function titleCase(s) {
+    return String(s || '').split(' ').map(w => w.length > 0 ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
+  }
+  function parseDateMaybe(s) {
+    if (!s) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function fmtDate(d) {
+    if (!d) return '';
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // ============================================================================
+  // File parsers
+  // ============================================================================
+  function parseAmazonTSV(file) {
+    return new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        delimiter: '\t',
+        skipEmptyLines: true,
+        complete: (results) => resolve(results.data),
+        error: reject,
+      });
+    });
+  }
+
+  function parseShopifyFile(file) {
+    return new Promise((resolve, reject) => {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+        // Use SheetJS
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const wb = XLSX.read(e.target.result, { type: 'array' });
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+            resolve(json);
+          } catch (err) { reject(err); }
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      } else {
+        // CSV
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => resolve(results.data),
+          error: reject,
+        });
+      }
+    });
+  }
+
+  // ============================================================================
+  // Analysis (port of build_cannibalization)
+  // ============================================================================
+  async function runAnalysis() {
+    const statusEl = document.getElementById('status-line');
+    const resultsEl = document.getElementById('results-content');
+    resultsEl.innerHTML = '<div class="loading" id="loading-line">Reading Amazon files…</div>';
+    document.getElementById('run-btn').disabled = true;
+
+    try {
+      // --- LOAD AMAZON FILES ---
+      let amzRows = [];
+      for (let i = 0; i < amzFiles.length; i++) {
+        document.getElementById('loading-line').textContent = `Reading Amazon file ${i+1}/${amzFiles.length} — ${amzFiles[i].name}…`;
+        const rows = await parseAmazonTSV(amzFiles[i].file);
+        amzRows.push(...rows);
+      }
+
+      // Check required columns
+      if (amzRows.length === 0) throw new Error('Amazon files are empty.');
+      const amzKeys = Object.keys(amzRows[0]);
+      const needed = ['recipient-name', 'ship-postal-code', 'purchase-date'];
+      for (const c of needed) {
+        if (!amzKeys.includes(c)) {
+          throw new Error(`Amazon file missing required column: "${c}"`);
+        }
+      }
+
+      document.getElementById('loading-line').textContent = `Normalizing ${amzRows.length.toLocaleString()} Amazon orders…`;
+      await sleep(20);
+
+      const amzNormalized = [];
+      for (const r of amzRows) {
+        const name = normalizeName(r['recipient-name']);
+        const zip = normalizeZip(r['ship-postal-code']);
+        if (!name || !zip) continue;
+        const date = parseDateMaybe(r['purchase-date']);
+        amzNormalized.push({ name, zip, date });
+      }
+
+      // Deduplicate to earliest amz order per (name, zip)
+      const amzCustomers = new Map(); // key -> { name, zip, date }
+      for (const r of amzNormalized) {
+        const key = r.name + '|' + r.zip;
+        const existing = amzCustomers.get(key);
+        if (!existing || (r.date && (!existing.date || r.date < existing.date))) {
+          amzCustomers.set(key, r);
+        }
+      }
+
+      // --- LOAD SHOPIFY FILES ---
+      let shopRows = [];
+      for (let i = 0; i < shopFiles.length; i++) {
+        document.getElementById('loading-line').textContent = `Reading Shopify file ${i+1}/${shopFiles.length} — ${shopFiles[i].name}…`;
+        const rows = await parseShopifyFile(shopFiles[i].file);
+        shopRows.push(...rows);
+      }
+      if (shopRows.length === 0) throw new Error('Shopify files are empty.');
+
+      // Filter out Amazon-tagged orders
+      const filteredShop = shopRows.filter(r => {
+        const tags = String(r['tags'] || '').toLowerCase();
+        return !tags.includes('amazon');
+      });
+
+      document.getElementById('loading-line').textContent = `Normalizing ${filteredShop.length.toLocaleString()} Shopify orders…`;
+      await sleep(20);
+
+      // Build full_name
+      const shopKeys = filteredShop.length > 0 ? Object.keys(filteredShop[0]) : [];
+      const hasFirstLast = shopKeys.includes('first_name') && shopKeys.includes('last_name');
+      const hasName = shopKeys.includes('name');
+      if (!hasFirstLast && !hasName) {
+        throw new Error('Shopify file missing name column(s): need "first_name" + "last_name" or "name"');
+      }
+      if (!shopKeys.includes('ship_postal_code')) {
+        throw new Error('Shopify file missing "ship_postal_code" column');
+      }
+
+      const shopNormalized = [];
+      for (const r of filteredShop) {
+        let full;
+        if (hasFirstLast) {
+          full = (String(r['first_name'] || '') + ' ' + String(r['last_name'] || '')).trim();
+        } else {
+          full = String(r['name'] || '').trim();
+        }
+        const name = normalizeName(full);
+        const zip = normalizeZip(r['ship_postal_code']);
+        if (!name || !zip) continue;
+        const date = parseDateMaybe(r['order_created_at']);
+        shopNormalized.push({ name, zip, date });
+      }
+
+      // Deduplicate to earliest shopify order per customer
+      const shopCustomers = new Map();
+      for (const r of shopNormalized) {
+        const key = r.name + '|' + r.zip;
+        const existing = shopCustomers.get(key);
+        if (!existing || (r.date && (!existing.date || r.date < existing.date))) {
+          shopCustomers.set(key, r);
+        }
+      }
+
+      // --- MATCH ---
+      document.getElementById('loading-line').textContent = `Matching ${amzCustomers.size.toLocaleString()} Amazon customers against ${shopCustomers.size.toLocaleString()} Shopify customers…`;
+      await sleep(20);
+
+      const dtcFirst = [];   // dtc_date < amz_date
+      const amzFirst = [];   // amz_date <= dtc_date
+      const strictlyAmz = []; // never on shopify
+
+      for (const [key, amzCust] of amzCustomers.entries()) {
+        const shop = shopCustomers.get(key);
+        if (!shop) { strictlyAmz.push({ name: amzCust.name, zip: amzCust.zip, amz_date: amzCust.date }); continue; }
+        const both = { name: amzCust.name, zip: amzCust.zip, amz_date: amzCust.date, dtc_date: shop.date };
+        // If we can't compare dates (missing either), default to amzFirst to match python's <= semantics
+        if (amzCust.date && shop.date) {
+          if (shop.date < amzCust.date) dtcFirst.push(both);
+          else amzFirst.push(both);
+        } else {
+          amzFirst.push(both);
+        }
+      }
+
+      const total = amzCustomers.size;
+      const pct = n => total > 0 ? Math.round((n / total) * 1000) / 10 : 0;
+
+      const result = {
+        total_amazon_customers: total,
+        total_shopify_customers: shopCustomers.size,
+        summary: [
+          { bucket: 'DTC → Amazon',    description: 'Bought on Burlebo.com first, then Amazon', count: dtcFirst.length,   pct: pct(dtcFirst.length),   color: 'orange' },
+          { bucket: 'Amazon → DTC',    description: 'Bought on Amazon first, then Burlebo.com', count: amzFirst.length,   pct: pct(amzFirst.length),   color: 'green' },
+          { bucket: 'Strictly Amazon', description: 'Amazon only — never purchased on Burlebo.com', count: strictlyAmz.length, pct: pct(strictlyAmz.length), color: 'muted' },
+        ],
+        dtc_to_amazon: dtcFirst.slice(0, 50).map(r => ({
+          name: titleCase(r.name), zip: r.zip,
+          amz_date: fmtDate(r.amz_date), dtc_date: fmtDate(r.dtc_date),
+        })),
+        amazon_to_dtc: amzFirst.slice(0, 50).map(r => ({
+          name: titleCase(r.name), zip: r.zip,
+          amz_date: fmtDate(r.amz_date), dtc_date: fmtDate(r.dtc_date),
+        })),
+        note: 'Matching based on recipient name + zip code from Amazon orders. Shopify orders tagged "amazon" are excluded.',
+      };
+
+      window._cannData = result;
+      renderResults(result);
+    } catch (err) {
+      resultsEl.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Error</div><div class="empty-sub">${err.message}</div></div>`;
+    } finally {
+      document.getElementById('run-btn').disabled = false;
+    }
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+  function renderResults(d) {
+    let html = '';
+
+    // KPIs
+    html += '<div class="kpi-row-2">';
+    html += `<div class="kpi orange"><div class="kpi-label">Amazon FBM Customers</div><div class="kpi-value">${d.total_amazon_customers.toLocaleString()}</div></div>`;
+    html += `<div class="kpi blue"><div class="kpi-label">Shopify DTC Customers</div><div class="kpi-value">${d.total_shopify_customers.toLocaleString()}</div></div>`;
+    html += '</div>';
+
+    // Bucket cards
+    html += '<div class="bucket-grid">';
+    for (const b of d.summary) {
+      html += `<div class="bucket-card">
+        <div class="bucket-label">${b.bucket}</div>
+        <div class="bucket-pct ${b.color}">${b.pct}%</div>
+        <div class="bucket-count">${b.count.toLocaleString()} customers</div>
+        <div class="bucket-desc">${b.description}</div>
+      </div>`;
+    }
+    html += '</div>';
+
+    if (d.dtc_to_amazon.length > 0) {
+      html += '<div class="card"><div class="card-title">🔶 DTC → Amazon Customers (sample of ' + d.dtc_to_amazon.length + ')</div>';
+      html += '<table><thead><tr><th>Name</th><th>Zip</th><th class="r">First DTC Order</th><th class="r">First Amazon Order</th></tr></thead><tbody>';
+      for (const r of d.dtc_to_amazon) {
+        html += `<tr><td>${escapeHtml(r.name)}</td><td>${r.zip}</td><td class="r">${r.dtc_date || '—'}</td><td class="r">${r.amz_date || '—'}</td></tr>`;
+      }
+      html += '</tbody></table></div>';
+    }
+
+    if (d.amazon_to_dtc.length > 0) {
+      html += '<div class="card"><div class="card-title">🟢 Amazon → DTC Customers (sample of ' + d.amazon_to_dtc.length + ')</div>';
+      html += '<table><thead><tr><th>Name</th><th>Zip</th><th class="r">First Amazon Order</th><th class="r">First DTC Order</th></tr></thead><tbody>';
+      for (const r of d.amazon_to_dtc) {
+        html += `<tr><td>${escapeHtml(r.name)}</td><td>${r.zip}</td><td class="r">${r.amz_date || '—'}</td><td class="r">${r.dtc_date || '—'}</td></tr>`;
+      }
+      html += '</tbody></table></div>';
+    }
+
+    html += `<div class="note">⚠️ ${d.note} Sample tables show up to 50 customers per bucket.</div>`;
+
+    document.getElementById('results-content').innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+</script>
+
+</body>
+</html>
