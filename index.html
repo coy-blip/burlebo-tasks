@@ -514,7 +514,7 @@ const SECTIONS = [
   }
 ];
 
-let role = localStorage.getItem('burlebo_role') || null;
+let role = null;
 let taskState = {};
 let products = [];
 let collapsed = {};
@@ -590,7 +590,6 @@ async function deleteProduct(id) {
 
 function selectRole(r) {
   role = r;
-  localStorage.setItem('burlebo_role', r);
   document.getElementById('role-modal').style.display = 'none';
   updateRoleUI();
   render();
@@ -598,7 +597,6 @@ function selectRole(r) {
 
 function switchRole(r) {
   role = r;
-  localStorage.setItem('burlebo_role', r);
   updateRoleUI();
   render();
 }
@@ -629,8 +627,9 @@ function productStatus(productId, sectionId) {
 }
 
 function totalStats() {
+  const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
   let totalTasks = 0, doneTasks = 0;
-  for (const s of SECTIONS) {
+  for (const s of visibleSections) {
     for (const p of products) {
       for (const t of s.tasks) {
         totalTasks++;
@@ -638,7 +637,7 @@ function totalStats() {
       }
     }
   }
-  const complete = products.filter(p => SECTIONS.every(s => productStatus(p.id, s.id) === 'complete')).length;
+  const complete = products.filter(p => visibleSections.every(s => productStatus(p.id, s.id) === 'complete')).length;
   return { totalTasks, doneTasks, complete, total: products.length };
 }
 
@@ -673,7 +672,9 @@ function renderSections() {
   const container = document.getElementById('sections-container');
   let html = '';
 
-  for (const section of SECTIONS) {
+  const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
+
+  for (const section of visibleSections) {
     const prog = sectionProgress(section.id);
     const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
     const isOpen = !collapsed[section.id];
@@ -949,11 +950,8 @@ async function init() {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
 
-  if (!role) {
-    document.getElementById('role-modal').style.display = 'flex';
-  } else {
-    updateRoleUI();
-  }
+  document.getElementById('role-modal').style.display = 'flex';
+  updateRoleUI();
 
   render();
 
