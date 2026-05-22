@@ -430,8 +430,23 @@
 
   function formatDate(d) {
     if (!d) return '—';
-    const [y, m, day] = d.split('-');
-    return new Date(Date.UTC(+y, +m - 1, +day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // Normalize to YYYY-MM-DD regardless of input shape:
+    //   - String "2026-05-20"     -> use directly
+    //   - String "2026-05-20T..." -> take the date part
+    //   - Date object             -> use its UTC date parts (avoids timezone shift)
+    let y, m, day;
+    if (d instanceof Date) {
+      y = d.getUTCFullYear();
+      m = d.getUTCMonth() + 1;
+      day = d.getUTCDate();
+    } else {
+      const s = String(d).slice(0, 10); // strip time if present
+      const parts = s.split('-');
+      if (parts.length !== 3) return String(d);
+      [y, m, day] = parts.map(n => parseInt(n, 10));
+    }
+    const dt = new Date(Date.UTC(y, m - 1, day));
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
   }
 
   function timeAgo(ts) {
@@ -518,20 +533,20 @@
       dateFieldHtml = `
         <div class="field">
           <label>Date this report is for</label>
-          <input type="date" id="sales-date" value="${yesterdayISO()}" max="${new Date().toISOString().slice(0,10)}">
+          <input type="date" id="upload-date" value="${yesterdayISO()}" max="${new Date().toISOString().slice(0,10)}">
         </div>
       `;
     } else if (type === 'ad') {
-      // Detect date from first row's "Date range"
+      // Detect date from first row's "Date range" — default the picker to it
       const dateCol = Object.keys(rows[0] || {}).find(k => k.trim().toLowerCase() === 'date range');
       const detectedDate = dateCol ? parseAdDate(rows[0][dateCol]) : null;
+      const defaultDate = detectedDate || yesterdayISO();
       dateFieldHtml = `
         <div class="field">
-          <label>Date (from file)</label>
-          <div class="value">${formatDate(detectedDate)}${detectedDate ? '' : ' <span style="color:var(--red)">— could not detect</span>'}</div>
+          <label>Date this report is for${detectedDate ? ' (detected from file)' : ''}</label>
+          <input type="date" id="upload-date" value="${defaultDate}" max="${new Date().toISOString().slice(0,10)}">
         </div>
       `;
-      if (detectedDate) container.dataset.adDate = detectedDate;
     }
 
     container.innerHTML = `
@@ -570,12 +585,14 @@
     statusEl.className = 'status'; statusEl.textContent = 'Checking for existing data…';
 
     let targetDate = null;
-    if (currentType === 'sales') {
-      targetDate = document.getElementById('sales-date').value;
-      if (!targetDate) { statusEl.className = 'status err'; statusEl.textContent = 'Please pick a date.'; btn.disabled = false; return; }
-    } else if (currentType === 'ad') {
-      targetDate = document.getElementById('preview-container').dataset.adDate;
-      if (!targetDate) { statusEl.className = 'status err'; statusEl.textContent = 'Could not detect a date in the file. Cannot proceed.'; btn.disabled = false; return; }
+    if (currentType === 'sales' || currentType === 'ad') {
+      const el = document.getElementById('upload-date');
+      targetDate = el ? el.value : null;
+      if (!targetDate) {
+        statusEl.className = 'status err';
+        statusEl.textContent = 'Please pick a date.';
+        btn.disabled = false; return;
+      }
     }
 
     // Check existing
