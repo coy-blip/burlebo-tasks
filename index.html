@@ -1535,9 +1535,10 @@ function renderSections() {
                 <span>${group}</span>
                 ${groupPriHtml}
               </div>
-              ${groupChecks ? `<div style="display:flex;align-items:center;gap:20px;padding:8px 18px;background:var(--surface);border-bottom:1px solid var(--border);">${groupChecks}</div>` : ''}
-              ${(section.id === 'content' || section.id === 'upload') ? `
-              <div class="group-body">
+              ${groupChecks ? `<div style="display:flex;align-items:center;gap:20px;padding:8px 18px;background:var(--surface);border-bottom:1px solid var(--border);">${groupChecks}</div>` : ''}`;
+
+            if (section.id === 'content' || section.id === 'upload') {
+              html += `<div class="group-body">
                 <div class="group-assets">
                   <div class="group-asset-item">
                     <span class="asset-label">📄 Copywriting Doc</span>
@@ -1568,7 +1569,9 @@ function renderSections() {
                     onblur="saveGroupNotes(this.dataset.group, this.value)"
                     >${notes}</textarea>
                 </div>
-              </div>` : ''};
+              </div>`;
+            }
+
             lastGroup = group;
           }
 
