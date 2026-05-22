@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8; --purple: #a78bfa; --gold: #fbbf24; --teal: #2dd4bf;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--panel); }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 32px; }
+  main.hidden { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 24px 0; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tab {
+    background: transparent; border: none; color: var(--text-dim);
+    padding: 10px 18px; font-family: inherit; font-size: 14px; font-weight: 500;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px;
+  }
+  .panel + .panel { margin-top: 16px; }
+
+  .panel-title { font-size: 16px; font-weight: 600; margin: 0 0 4px 0; }
+  .panel-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; line-height: 1.5; }
+
+  /* Forms */
+  .form-grid { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: center; margin-bottom: 14px; }
+  @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; gap: 6px; } }
+  .form-label { font-size: 13px; color: var(--text-dim); font-weight: 500; }
+  .form-hint { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  input[type=text], input[type=number], input[type=date] {
+    width: 100%; padding: 8px 12px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 14px; outline: none;
+    color-scheme: dark;
+  }
+  input:focus { border-color: var(--accent); }
+
+  .btn { padding: 9px 16px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.92; }
+  .btn.primary:disabled { opacity: 0.5; cursor: wait; }
+  .btn.danger { background: transparent; border-color: rgba(248, 113, 113, 0.3); color: var(--red); }
+  .btn.danger:hover { background: rgba(248, 113, 113, 0.08); }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+  .btn.ghost:hover { color: var(--text); }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .save-status { font-size: 13px; }
+  .save-status.success { color: var(--green); }
+  .save-status.error { color: var(--red); }
+
+  /* Tables */
+  .table-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; margin-top: 12px; max-height: 500px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--panel-2); position: sticky; top: 0; z-index: 1; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+  td.r, th.r { text-align: right; }
+  tr:last-child td { border-bottom: none; }
+  td input { background: transparent; border: 1px solid transparent; padding: 4px 8px; font-size: 13px; }
+  td input:focus { background: var(--panel-2); border-color: var(--accent); }
+  td input.num { text-align: right; width: 100px; }
+  td input.date { width: 130px; }
+  td.del { width: 36px; text-align: center; }
+  .row-del { background: none; border: none; color: var(--red); cursor: pointer; padding: 2px 6px; font-size: 14px; }
+  .row-del:hover { color: #ffabab; }
+
+  .add-row-btn { margin-top: 10px; }
+
+  /* Month grid for agency */
+  .months-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  @media (max-width: 700px) { .months-grid { grid-template-columns: repeat(2, 1fr); } }
+  .month-cell { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
+  .month-cell label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .month-cell input { font-size: 14px; padding: 4px 6px; margin-top: 2px; border: 1px solid transparent; background: transparent; }
+  .month-cell input:focus { background: var(--panel); border-color: var(--accent); }
+
+  /* Product group editor */
+  .group-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px;
+  }
+  .group-row { display: grid; grid-template-columns: 1.4fr 0.6fr 0.6fr 0.6fr 40px; gap: 10px; align-items: center; }
+  @media (max-width: 700px) { .group-row { grid-template-columns: 1fr 1fr; } }
+  .group-row input { font-size: 13px; padding: 7px 10px; background: var(--panel); border: 1px solid var(--border); }
+  .prefixes-line {
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim);
+  }
+  .prefix-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .prefix-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    padding: 3px 4px 3px 10px; border-radius: 4px;
+    font-family: 'SF Mono', Menlo, monospace; font-size: 12px;
+  }
+  .prefix-chip button { background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 0 6px; font-size: 13px; }
+  .prefix-chip button:hover { color: var(--red); }
+  .prefix-add-form { display: flex; gap: 6px; margin-top: 6px; }
+  .prefix-add-form input { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; padding: 4px 8px; flex: 1; max-width: 160px; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; }
+  .empty-title { font-size: 15px; margin-bottom: 4px; color: var(--text); }
+  .empty-sub { font-size: 13px; max-width: 480px; margin: 0 auto; line-height: 1.5; }
+  .loading { color: var(--text-dim); font-size: 14px; padding: 40px 0; text-align: center; }
+  .locked { text-align: center; padding: 80px 20px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .locked .lock-icon { font-size: 48px; margin-bottom: 12px; }
+  .locked h2 { font-size: 18px; font-weight: 600; margin: 0 0 6px 0; }
+  .locked p { font-size: 14px; color: var(--text-dim); margin: 0 auto; max-width: 420px; line-height: 1.5; }
+
+  /* Role modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 13px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input { width: 100%; padding: 11px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; margin-bottom: 8px; }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Role modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
+      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
+      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
+      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
+    </div>
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
+        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav">
+    <span class="role-pill" id="role-pill" onclick="logout()"></span>
+  </nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">Settings</div>
+  <div class="page-sub" id="settings-sub">Configure the data the dashboard uses for profit, goals, and ad attribution</div>
+
+  <!-- Locked view -->
+  <div id="locked-view" style="display:none;">
+    <div class="locked">
+      <div class="lock-icon">🔒</div>
+      <h2>Coy-only page</h2>
+      <p>Settings can only be edited by Coy. Switch role using the pill in the top-right corner.</p>
+    </div>
+  </div>
+
+  <!-- Coy view -->
+  <div id="settings-view" style="display:none;">
+    <div class="tabs">
+      <button class="tab active" data-tab="goal" onclick="setTab('goal')">🎯 Goal</button>
+      <button class="tab" data-tab="agency" onclick="setTab('agency')">💼 Agency Fees</button>
+      <button class="tab" data-tab="creators" onclick="setTab('creators')">🤝 Creators</button>
+      <button class="tab" data-tab="groups" onclick="setTab('groups')">🛍️ Product Groups</button>
+    </div>
+
+    <div id="settings-content">
+      <div class="loading">Loading settings…</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ============================================================================
+  // Shared nav loader
+  // ============================================================================
+  async function loadSharedNav() {
+    try {
+      const r = await fetch('/nav.html', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const html = await r.text();
+      const nav = document.getElementById('main-nav');
+      const pill = document.getElementById('role-pill');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const here = window.location.pathname.replace(/\/$/, '') || '/';
+      for (const a of tmp.querySelectorAll('a')) {
+        const href = a.getAttribute('href');
+        if (href === here || (href === '/' && here === '/')) a.classList.add('active');
+        nav.insertBefore(a, pill);
+      }
+    } catch (err) { console.error('Nav load failed:', err); }
+  }
+
+  // ============================================================================
+  // Supabase + auth
+  // ============================================================================
+  const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+  let role = null;
+  let pendingRole = null;
+
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+  function checkPw() {
+    if (!pendingRole) return;
+    if (document.getElementById('pw-input').value === ROLES[pendingRole].password) enterApp(pendingRole);
+    else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+    loadSharedNav();
+
+    if (r === 'coy') {
+      document.getElementById('settings-view').style.display = 'block';
+      document.getElementById('locked-view').style.display = 'none';
+      loadAllData();
+    } else {
+      document.getElementById('settings-view').style.display = 'none';
+      document.getElementById('locked-view').style.display = 'block';
+      document.getElementById('settings-sub').textContent = '';
+    }
+  }
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
+
+  // ============================================================================
+  // State
+  // ============================================================================
+  let _config = null;        // dashboard_config row
+  let _groups = [];          // [{ id, group_name, cogs, fbm_fee, fba_fee }]
+  let _prefixes = [];        // [{ id, group_id, prefix }]
+  let _creators = [];        // [{ id, date, spend, income, note }]
+  let _activeTab = 'goal';
+
+  async function loadAllData() {
+    try {
+      const [cfg, gr, pf, cc] = await Promise.all([
+        sb.from('dashboard_config').select('*').eq('id', 1).single(),
+        sb.from('product_groups').select('*').order('group_name'),
+        sb.from('product_group_prefixes').select('*'),
+        sb.from('creator_connections').select('*').order('date', { ascending: false }),
+      ]);
+
+      if (cfg.error) throw new Error(cfg.error.message);
+      if (gr.error) throw new Error(gr.error.message);
+      if (pf.error) throw new Error(pf.error.message);
+      if (cc.error) throw new Error(cc.error.message);
+
+      _config = cfg.data || { goal: {}, agency: {} };
+      _groups = gr.data || [];
+      _prefixes = pf.data || [];
+      _creators = cc.data || [];
+
+      renderTab();
+    } catch (err) {
+      document.getElementById('settings-content').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Failed to load settings</div><div class="empty-sub">${err.message}</div></div>`;
+    }
+  }
+
+  function setTab(tab) {
+    _activeTab = tab;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    renderTab();
+  }
+
+  function renderTab() {
+    const el = document.getElementById('settings-content');
+    if (_activeTab === 'goal') el.innerHTML = renderGoalTab();
+    else if (_activeTab === 'agency') el.innerHTML = renderAgencyTab();
+    else if (_activeTab === 'creators') el.innerHTML = renderCreatorsTab();
+    else if (_activeTab === 'groups') el.innerHTML = renderGroupsTab();
+  }
+
+  // ============================================================================
+  // GOAL TAB
+  // ============================================================================
+  function renderGoalTab() {
+    const g = _config?.goal || {};
+    return `
+      <div class="panel">
+        <div class="panel-title">Revenue Goal</div>
+        <div class="panel-sub">Drives the Goal Tracker page, Snapshot pace card, and Big Picture Report. Pace is calculated as (actual vs proportional target through today).</div>
+
+        <div class="form-grid">
+          <div class="form-label">Target ($)</div>
+          <div>
+            <input type="number" id="goal-target" value="${g.target || 7000000}" step="1000" min="0" />
+            <div class="form-hint">e.g. 7000000 for $7M</div>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-label">Period start</div>
+          <div><input type="date" id="goal-start" value="${g.start_date || '2026-01-01'}" /></div>
+        </div>
+        <div class="form-grid">
+          <div class="form-label">Period end</div>
+          <div><input type="date" id="goal-end" value="${g.end_date || '2026-12-31'}" /></div>
+        </div>
+
+        <div class="toolbar">
+          <button class="btn primary" id="save-goal-btn" onclick="saveGoal()">💾 Save Goal</button>
+          <span id="save-goal-status" class="save-status"></span>
+        </div>
+      </div>
+    `;
+  }
+
+  async function saveGoal() {
+    const target = parseFloat(document.getElementById('goal-target').value);
+    const start = document.getElementById('goal-start').value;
+    const end = document.getElementById('goal-end').value;
+    if (isNaN(target) || target <= 0) return setSaveStatus('save-goal-status', 'Target must be a positive number', 'error');
+    if (!start || !end) return setSaveStatus('save-goal-status', 'Start and end dates required', 'error');
+    if (start > end) return setSaveStatus('save-goal-status', 'Start must be before end', 'error');
+
+    const btn = document.getElementById('save-goal-btn');
+    btn.disabled = true;
+    setSaveStatus('save-goal-status', 'Saving…');
+
+    try {
+      const newGoal = { target, start_date: start, end_date: end };
+      const { error } = await sb.from('dashboard_config').update({ goal: newGoal }).eq('id', 1);
+      if (error) throw new Error(error.message);
+      _config.goal = newGoal;
+      setSaveStatus('save-goal-status', '✓ Saved', 'success');
+    } catch (err) {
+      setSaveStatus('save-goal-status', err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ============================================================================
+  // AGENCY TAB
+  // ============================================================================
+  const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function renderAgencyTab() {
+    const a = _config?.agency || {};
+    const monthlyPayments = a.monthly_payments || {};
+    let monthCells = '';
+    for (let i = 0; i < 12; i++) {
+      const m = MONTHS[i];
+      const v = monthlyPayments[m];
+      monthCells += `<div class="month-cell">
+        <label>${MONTH_LABELS[i]}</label>
+        <input type="number" data-month="${m}" value="${v != null ? v : ''}" step="0.01" placeholder="0" />
+      </div>`;
+    }
+    return `
+      <div class="panel">
+        <div class="panel-title">Agency Fees by Month</div>
+        <div class="panel-sub">
+          Total agency invoice per month. The Profit page prorates this across the selected date range and splits it across product groups
+          (flat portion ≤ $5,950 divided evenly; variable portion above $5,950 weighted by ad spend per group).
+          Leave a month blank if there's no invoice that month.
+        </div>
+
+        <div class="months-grid">${monthCells}</div>
+
+        <div class="toolbar">
+          <button class="btn primary" id="save-agency-btn" onclick="saveAgency()">💾 Save Agency Fees</button>
+          <span id="save-agency-status" class="save-status"></span>
+        </div>
+      </div>
+    `;
+  }
+
+  async function saveAgency() {
+    const newPayments = {};
+    document.querySelectorAll('[data-month]').forEach(input => {
+      const m = input.dataset.month;
+      const val = input.value.trim();
+      if (val === '') return;
+      const n = parseFloat(val);
+      if (!isNaN(n) && n > 0) newPayments[m] = n;
+    });
+
+    const btn = document.getElementById('save-agency-btn');
+    btn.disabled = true;
+    setSaveStatus('save-agency-status', 'Saving…');
+
+    try {
+      const newAgency = { ..._config.agency, monthly_payments: newPayments };
+      const { error } = await sb.from('dashboard_config').update({ agency: newAgency }).eq('id', 1);
+      if (error) throw new Error(error.message);
+      _config.agency = newAgency;
+      setSaveStatus('save-agency-status', '✓ Saved', 'success');
+    } catch (err) {
+      setSaveStatus('save-agency-status', err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ============================================================================
+  // CREATOR CONNECTIONS TAB
+  // ============================================================================
+  function renderCreatorsTab() {
+    const rows = _creators.map((c, i) => `
+      <tr>
+        <td><input type="date" class="date" value="${(c.date instanceof Date) ? toISO(c.date) : String(c.date || '').slice(0,10)}" onchange="updateCreatorField(${i}, 'date', this.value)" /></td>
+        <td class="r"><input type="number" class="num" value="${c.spend ?? 0}" step="0.01" min="0" onchange="updateCreatorField(${i}, 'spend', this.value)" /></td>
+        <td class="r"><input type="number" class="num" value="${c.income ?? 0}" step="0.01" min="0" onchange="updateCreatorField(${i}, 'income', this.value)" /></td>
+        <td><input type="text" value="${escapeHtml(c.note || '')}" oninput="updateCreatorField(${i}, 'note', this.value)" placeholder="optional note" /></td>
+        <td class="del"><button class="row-del" onclick="deleteCreator(${i})" title="Delete row">✕</button></td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="panel">
+        <div class="panel-title">Creator Connections</div>
+        <div class="panel-sub">
+          Influencer / creator partnership cost &amp; income. The Profit page sums these in the selected date range:
+          income adds to revenue, spend subtracts from net profit.
+        </div>
+
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>Date</th>
+            <th class="r">Spend ($)</th>
+            <th class="r">Income ($)</th>
+            <th>Note</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:20px;">No creator connections yet — click "Add row" to start</td></tr>'}</tbody>
+        </table></div>
+
+        <div class="toolbar">
+          <button class="btn" onclick="addCreatorRow()">+ Add Row</button>
+          <button class="btn primary" id="save-creators-btn" onclick="saveCreators()">💾 Save All Changes</button>
+          <span id="save-creators-status" class="save-status"></span>
+        </div>
+      </div>
+    `;
+  }
+
+  function addCreatorRow() {
+    _creators.unshift({
+      id: null,  // null means "new row, INSERT it"
+      date: new Date().toISOString().slice(0, 10),
+      spend: 0,
+      income: 0,
+      note: '',
+    });
+    renderTab();
+  }
+
+  function updateCreatorField(i, field, value) {
+    if (!_creators[i]) return;
+    if (field === 'spend' || field === 'income') _creators[i][field] = parseFloat(value) || 0;
+    else _creators[i][field] = value;
+    _creators[i]._dirty = true;
+  }
+
+  function deleteCreator(i) {
+    if (!confirm('Delete this creator connection row?')) return;
+    const row = _creators[i];
+    if (row.id != null) {
+      _creators[i]._deleted = true;
+      _creators[i]._dirty = true;
+    } else {
+      _creators.splice(i, 1);
+    }
+    renderTab();
+  }
+
+  async function saveCreators() {
+    const btn = document.getElementById('save-creators-btn');
+    btn.disabled = true;
+    setSaveStatus('save-creators-status', 'Saving…');
+
+    try {
+      // Deletions
+      const toDelete = _creators.filter(c => c._deleted && c.id != null).map(c => c.id);
+      if (toDelete.length) {
+        const { error } = await sb.from('creator_connections').delete().in('id', toDelete);
+        if (error) throw new Error('Delete failed: ' + error.message);
+      }
+      // Updates
+      const toUpdate = _creators.filter(c => c.id != null && c._dirty && !c._deleted);
+      for (const c of toUpdate) {
+        const { error } = await sb.from('creator_connections')
+          .update({ date: c.date, spend: c.spend, income: c.income, note: c.note })
+          .eq('id', c.id);
+        if (error) throw new Error('Update failed: ' + error.message);
+      }
+      // Inserts
+      const toInsert = _creators.filter(c => c.id == null && !c._deleted)
+        .map(c => ({ date: c.date, spend: c.spend, income: c.income, note: c.note }));
+      if (toInsert.length) {
+        const { error } = await sb.from('creator_connections').insert(toInsert);
+        if (error) throw new Error('Insert failed: ' + error.message);
+      }
+
+      setSaveStatus('save-creators-status', `✓ Saved ${toUpdate.length} updates, ${toInsert.length} new, ${toDelete.length} deleted`, 'success');
+      // Re-fetch to pull fresh IDs/state
+      const { data } = await sb.from('creator_connections').select('*').order('date', { ascending: false });
+      _creators = data || [];
+      setTimeout(() => renderTab(), 800);
+    } catch (err) {
+      setSaveStatus('save-creators-status', err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ============================================================================
+  // PRODUCT GROUPS TAB
+  // ============================================================================
+  function renderGroupsTab() {
+    let html = `
+      <div class="panel">
+        <div class="panel-title">Product Groups</div>
+        <div class="panel-sub">
+          Each product group has COGS + Amazon FBM fee + Amazon FBA fee. SKUs are matched into groups by prefix
+          (longest prefix wins, so <span style="font-family:'SF Mono',monospace;font-size:12px;">Y-PH-</span> beats <span style="font-family:'SF Mono',monospace;font-size:12px;">PH-</span>).
+          Changing COGS or fees affects the Profit page calculations on next page load.
+        </div>
+
+        <div id="groups-list">
+    `;
+
+    const groupsSorted = [..._groups].sort((a, b) => (a.group_name || '').localeCompare(b.group_name || ''));
+    for (const g of groupsSorted) {
+      if (g._deleted) continue;
+      const myPrefixes = _prefixes.filter(p => p.group_id === g.id && !p._deleted);
+      const idx = _groups.findIndex(x => x === g);
+      html += renderGroupCard(g, idx, myPrefixes);
+    }
+
+    html += `
+        </div>
+
+        <div class="toolbar">
+          <button class="btn" onclick="addGroup()">+ Add Product Group</button>
+          <button class="btn primary" id="save-groups-btn" onclick="saveGroups()">💾 Save All Changes</button>
+          <span id="save-groups-status" class="save-status"></span>
+        </div>
+      </div>
+    `;
+    return html;
+  }
+
+  function renderGroupCard(g, idx, myPrefixes) {
+    let prefixChips = '';
+    for (const p of myPrefixes) {
+      const pIdx = _prefixes.findIndex(x => x === p);
+      prefixChips += `<span class="prefix-chip">${escapeHtml(p.prefix)} <button onclick="removePrefix(${pIdx})" title="Remove prefix">✕</button></span>`;
+    }
+    return `<div class="group-card">
+      <div class="group-row">
+        <div>
+          <input type="text" placeholder="Group name" value="${escapeHtml(g.group_name || '')}"
+            oninput="updateGroupField(${idx}, 'group_name', this.value)" />
+        </div>
+        <div>
+          <input type="number" step="0.01" min="0" placeholder="COGS" value="${g.cogs ?? 0}"
+            oninput="updateGroupField(${idx}, 'cogs', this.value)" title="Cost of goods sold per unit" />
+        </div>
+        <div>
+          <input type="number" step="0.01" min="0" placeholder="FBM fee" value="${g.fbm_fee ?? 0}"
+            oninput="updateGroupField(${idx}, 'fbm_fee', this.value)" title="Amazon FBM fee per unit" />
+        </div>
+        <div>
+          <input type="number" step="0.01" min="0" placeholder="FBA fee" value="${g.fba_fee ?? 0}"
+            oninput="updateGroupField(${idx}, 'fba_fee', this.value)" title="Amazon FBA fee per unit" />
+        </div>
+        <div class="del"><button class="row-del" onclick="deleteGroup(${idx})" title="Delete group">✕</button></div>
+      </div>
+      <div class="prefixes-line">
+        SKU prefixes:
+        <div class="prefix-chips">${prefixChips || '<span style="color:var(--text-dim);font-size:12px;">no prefixes yet</span>'}</div>
+        <div class="prefix-add-form">
+          <input type="text" id="prefix-input-${idx}" placeholder="e.g. GTT-" onkeydown="if(event.key==='Enter')addPrefix(${idx})" />
+          <button class="btn sm" onclick="addPrefix(${idx})">Add prefix</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function updateGroupField(idx, field, value) {
+    if (!_groups[idx]) return;
+    if (field === 'cogs' || field === 'fbm_fee' || field === 'fba_fee') {
+      _groups[idx][field] = parseFloat(value) || 0;
+    } else {
+      _groups[idx][field] = value;
+    }
+    _groups[idx]._dirty = true;
+  }
+
+  function addGroup() {
+    _groups.push({ id: null, group_name: 'New Group', cogs: 0, fbm_fee: 0, fba_fee: 0, _dirty: true });
+    renderTab();
+  }
+
+  function deleteGroup(idx) {
+    const g = _groups[idx];
+    if (!g) return;
+    const myPrefixes = _prefixes.filter(p => p.group_id === g.id && !p._deleted);
+    const msg = `Delete "${g.group_name}"${myPrefixes.length ? ` and its ${myPrefixes.length} prefix(es)` : ''}?`;
+    if (!confirm(msg)) return;
+
+    if (g.id != null) {
+      g._deleted = true; g._dirty = true;
+      // Mark associated prefixes for deletion too
+      for (const p of _prefixes) {
+        if (p.group_id === g.id) { p._deleted = true; p._dirty = true; }
+      }
+    } else {
+      // Brand-new group — just splice out
+      _groups.splice(idx, 1);
+      // Remove unsaved prefixes for it (won't happen since id was null)
+    }
+    renderTab();
+  }
+
+  function addPrefix(groupIdx) {
+    const input = document.getElementById('prefix-input-' + groupIdx);
+    const val = input.value.trim().toUpperCase();
+    if (!val) { input.focus(); return; }
+    const g = _groups[groupIdx];
+    if (!g) return;
+    // Check for duplicates — prefix has a UNIQUE constraint in the DB
+    const dup = _prefixes.find(p => !p._deleted && p.prefix.toUpperCase() === val);
+    if (dup) {
+      const dupGroup = _groups.find(x => x.id === dup.group_id);
+      const where = dupGroup ? `"${dupGroup.group_name}"` : 'another group';
+      alert(`Prefix "${val}" is already assigned to ${where}. Remove it from there first, or pick a different prefix.`);
+      input.focus(); input.select();
+      return;
+    }
+    // For a brand-new group (id null), we'll associate by index marker
+    _prefixes.push({
+      id: null, group_id: g.id, _group_idx: groupIdx,
+      prefix: val, _dirty: true,
+    });
+    input.value = '';
+    renderTab();
+  }
+
+  function removePrefix(prefIdx) {
+    const p = _prefixes[prefIdx];
+    if (!p) return;
+    if (!confirm(`Remove prefix "${p.prefix}"?`)) return;
+    if (p.id != null) {
+      p._deleted = true; p._dirty = true;
+    } else {
+      _prefixes.splice(prefIdx, 1);
+    }
+    renderTab();
+  }
+
+  async function saveGroups() {
+    const btn = document.getElementById('save-groups-btn');
+    btn.disabled = true;
+    setSaveStatus('save-groups-status', 'Saving…');
+
+    try {
+      // Inserts/updates for groups first (we need IDs for prefixes)
+      const groupsToInsert = _groups.filter(g => g.id == null && !g._deleted);
+      const groupsToUpdate = _groups.filter(g => g.id != null && g._dirty && !g._deleted);
+      const groupsToDelete = _groups.filter(g => g._deleted && g.id != null).map(g => g.id);
+
+      // Map of group index in _groups → new id (for prefix association)
+      const newIdByIdx = new Map();
+
+      // INSERT groups
+      for (let i = 0; i < groupsToInsert.length; i++) {
+        const g = groupsToInsert[i];
+        const { data, error } = await sb.from('product_groups')
+          .insert({ group_name: g.group_name, cogs: g.cogs, fbm_fee: g.fbm_fee, fba_fee: g.fba_fee })
+          .select()
+          .single();
+        if (error) throw new Error('Group insert failed: ' + error.message);
+        g.id = data.id;
+        const origIdx = _groups.findIndex(x => x === g);
+        newIdByIdx.set(origIdx, data.id);
+      }
+      // UPDATE groups
+      for (const g of groupsToUpdate) {
+        const { error } = await sb.from('product_groups')
+          .update({ group_name: g.group_name, cogs: g.cogs, fbm_fee: g.fbm_fee, fba_fee: g.fba_fee })
+          .eq('id', g.id);
+        if (error) throw new Error('Group update failed: ' + error.message);
+      }
+
+      // Prefix changes
+      const prefDelIds = _prefixes.filter(p => p._deleted && p.id != null).map(p => p.id);
+      if (prefDelIds.length) {
+        const { error } = await sb.from('product_group_prefixes').delete().in('id', prefDelIds);
+        if (error) throw new Error('Prefix delete failed: ' + error.message);
+      }
+      const prefToInsert = _prefixes.filter(p => p.id == null && !p._deleted).map(p => {
+        // If this prefix belongs to a brand-new group, use the resolved ID
+        let groupId = p.group_id;
+        if (groupId == null && p._group_idx != null) groupId = newIdByIdx.get(p._group_idx);
+        return { group_id: groupId, prefix: p.prefix.toUpperCase() };
+      }).filter(p => p.group_id != null);
+      if (prefToInsert.length) {
+        const { error } = await sb.from('product_group_prefixes').insert(prefToInsert);
+        if (error) throw new Error('Prefix insert failed: ' + error.message);
+      }
+
+      // DELETE groups last (after we cleaned their prefixes)
+      if (groupsToDelete.length) {
+        // Delete dependent prefixes first
+        const { error: pErr } = await sb.from('product_group_prefixes').delete().in('group_id', groupsToDelete);
+        if (pErr) throw new Error('Group-prefix cleanup failed: ' + pErr.message);
+        const { error: gErr } = await sb.from('product_groups').delete().in('id', groupsToDelete);
+        if (gErr) throw new Error('Group delete failed: ' + gErr.message);
+      }
+
+      setSaveStatus('save-groups-status',
+        `✓ Saved (${groupsToInsert.length} new groups, ${groupsToUpdate.length} updated, ${groupsToDelete.length} deleted)`,
+        'success');
+
+      // Re-fetch to get clean state
+      const [gr, pf] = await Promise.all([
+        sb.from('product_groups').select('*').order('group_name'),
+        sb.from('product_group_prefixes').select('*'),
+      ]);
+      _groups = gr.data || [];
+      _prefixes = pf.data || [];
+      setTimeout(() => renderTab(), 800);
+    } catch (err) {
+      setSaveStatus('save-groups-status', err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ============================================================================
+  // Helpers
+  // ============================================================================
+  function setSaveStatus(elId, msg, cls) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'save-status' + (cls ? ' ' + cls : '');
+    if (cls === 'success') setTimeout(() => { el.textContent = ''; el.className = 'save-status'; }, 4000);
+  }
+  function toISO(d) {
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+  }
+  function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+</script>
+
+</body>
+</html>
