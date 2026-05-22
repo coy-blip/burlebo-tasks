@@ -960,27 +960,30 @@ function renderSections() {
             const allPdp = groupData['content_pdp_done'] || false;
 
             let groupChecks = '';
+            const escapedGroup = group.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
             if (section.id === 'upload' && role === 'coy') {
               groupChecks = `
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:500;color:${allLive ? 'var(--green)' : 'var(--text2)'};">
-                  <input type="checkbox" ${allLive ? 'checked' : ''} onchange="setGroupFlag('${group}','upload_all_live',this.checked)"
+                  <input type="checkbox" ${allLive ? 'checked' : ''} data-group="${group.replace(/"/g,'&quot;')}" data-flag="upload_all_live"
+                    onchange="setGroupFlag(this.dataset.group,this.dataset.flag,this.checked)"
                     style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
                   All Uploaded &amp; Live
                 </label>`;
             } else if (section.id === 'content' && role === 'designer') {
               groupChecks = `
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:500;color:${allAplus ? 'var(--green)' : 'var(--text2)'};">
-                  <input type="checkbox" ${allAplus ? 'checked' : ''} onchange="setGroupFlag('${group}','content_aplus_done',this.checked)"
+                  <input type="checkbox" ${allAplus ? 'checked' : ''} data-group="${group.replace(/"/g,'&quot;')}" data-flag="content_aplus_done"
+                    onchange="setGroupFlag(this.dataset.group,this.dataset.flag,this.checked)"
                     style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
                   All A+ Content Done
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:500;color:${allPdp ? 'var(--green)' : 'var(--text2)'};">
-                  <input type="checkbox" ${allPdp ? 'checked' : ''} onchange="setGroupFlag('${group}','content_pdp_done',this.checked)"
+                  <input type="checkbox" ${allPdp ? 'checked' : ''} data-group="${group.replace(/"/g,'&quot;')}" data-flag="content_pdp_done"
+                    onchange="setGroupFlag(this.dataset.group,this.dataset.flag,this.checked)"
                     style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
                   All PDP Images Done
                 </label>`;
             } else if (section.id === 'content' && role === 'coy') {
-              // Coy can see but not change designer checkboxes
               groupChecks = `
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:${allAplus ? 'var(--green)' : 'var(--text3)'};">
                   <input type="checkbox" ${allAplus ? 'checked' : ''} disabled
