@@ -1008,6 +1008,17 @@ async function uploadGroupDoc(group, input) {
   if (!groupAssets[group]) groupAssets[group] = {};
   groupAssets[group].docName = file.name;
   groupAssets[group].docUrl = urlData.publicUrl;
+
+  // Auto-check copywriting guide for all products in this group
+  const groupProducts = products.filter(p => getProductGroup(p.name) === group);
+  for (const p of groupProducts) {
+    if (!taskState[p.id]) taskState[p.id] = {};
+    if (!taskState[p.id]['content']) taskState[p.id]['content'] = {};
+    if (!isOverride(p.id, 'content', 'copy_guide')) {
+      taskState[p.id]['content']['copy_guide'] = true;
+    }
+  }
+  await saveState();
   await saveGroupAssets();
   input.value = '';
   render();
@@ -1039,6 +1050,13 @@ async function clearDropboxLink(group) {
 }
 
 const PRIORITIES = { high: { label: 'High', color: '#9B1C1C', bg: '#FDF2F2' }, medium: { label: 'Medium', color: '#92400E', bg: '#FFFBEB' }, low: { label: 'Low', color: '#057A55', bg: '#F0FAF4' } };
+
+async function setGroupPriority(group, priority) {
+  const groupProds = products.filter(p => getProductGroup(p.name) === group);
+  for (const p of groupProds) { p.priority = priority; }
+  render();
+  await saveProducts();
+}
 
 async function setPriority(productId, priority) {
   const p = products.find(x => x.id === productId);
@@ -1159,7 +1177,16 @@ function renderSidebar() {
     const groupCounts = {};
     for (const p of products) {
       const g = getProductGroup(p.name);
-      groupCounts[g] = (groupCounts[g] || 0) + 1;
+      // Count products that are NOT complete in at least one visible section
+      const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
+      const incomplete = visibleSections.some(s => productStatus(p.id, s.id) !== 'complete');
+      if (incomplete) groupCounts[g] = (groupCounts[g] || 0) + 1;
+      else if (!groupCounts[g]) groupCounts[g] = 0; // still show group even if all done
+    }
+    // Rebuild to include all groups (even fully complete ones showing 0)
+    for (const p of products) {
+      const g = getProductGroup(p.name);
+      if (groupCounts[g] === undefined) groupCounts[g] = 0;
     }
     const sortedGroups = Object.entries(groupCounts).sort((a,b) => a[0].localeCompare(b[0]));
     groupEl.innerHTML = sortedGroups.map(([g, count]) => {
@@ -1276,14 +1303,30 @@ function renderSections() {
                 </label>`;
             }
 
+            // Group priority — current priority if all products in group share same priority
+            const groupProds = products.filter(p => getProductGroup(p.name) === group);
+            const groupPri = groupProds.length > 0 && groupProds.every(p => p.priority === groupProds[0].priority) ? groupProds[0].priority : null;
+
+            const groupPriHtml = role === 'coy' ? `
+              <div style="display:flex;align-items:center;gap:6px;">
+                ${['high','medium','low'].map(p => `
+                  <button onclick="event.stopPropagation();setGroupPriority('${group.replace(/'/g,"\\'")}','${p}')"
+                    style="padding:2px 10px;border-radius:10px;border:1px solid ${PRIORITIES[p].color};background:${groupPri===p?PRIORITIES[p].bg:'transparent'};color:${PRIORITIES[p].color};font-size:11px;font-weight:500;cursor:pointer;">
+                    ${PRIORITIES[p].label}
+                  </button>`).join('')}
+                ${groupPri ? `<button onclick="event.stopPropagation();setGroupPriority('${group.replace(/'/g,"\\'")}',null)"
+                  style="padding:2px 8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;cursor:pointer;">Clear</button>` : ''}
+              </div>` : '';
+
             html += `<div class="product-group">
               <div class="group-label">
                 <span>${group}</span>
+                ${groupPriHtml}
               </div>
               ${groupChecks ? `<div style="display:flex;align-items:center;gap:20px;padding:8px 18px;background:var(--surface);border-bottom:1px solid var(--border);">${groupChecks}</div>` : ''}
               <div class="group-assets">
                 <div class="group-asset-item">
-                  <span class="asset-label">📄 Doc</span>
+                  <span class="asset-label">📄 Copywriting Doc</span>
                   <div class="asset-value">
                     ${docFile && docUrl
                       ? `<a class="asset-link" href="${docUrl}" target="_blank" title="${docFile}">📎 ${docFile}</a>
@@ -1291,8 +1334,8 @@ function renderSections() {
                       : role === 'coy'
                         ? `<span id="doc-status-${groupKey}" class="asset-uploading" style="display:none;">Uploading...</span>
                            <input type="file" id="doc-input-${groupKey}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc('${group}', this)" />
-                           <button class="asset-btn" onclick="document.getElementById('doc-input-${groupKey}').click()">+ Upload doc</button>`
-                        : `<span style="font-size:12px;color:var(--text3);">No doc uploaded yet</span>`
+                           <button class="asset-btn" onclick="document.getElementById('doc-input-${groupKey}').click()">+ Upload copywriting doc</button>`
+                        : `<span style="font-size:12px;color:var(--text3);">No copywriting doc yet</span>`
                     }
                   </div>
                 </div>
