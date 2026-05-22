@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profit — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8; --purple: #a78bfa; --gold: #fbbf24; --teal: #2dd4bf;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--panel); }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+  main.hidden { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 24px 0; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 16px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 20px;
+  }
+  .ctrl-label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+  .controls input[type=date] {
+    padding: 7px 10px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 13px; color-scheme: dark; width: 145px;
+  }
+  .controls input:focus { border-color: var(--accent); outline: none; }
+  .divider { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+  .btn { padding: 7px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.92; }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+  .btn.ghost:hover { color: var(--text); }
+
+  /* KPI strip - 7 cards */
+  .kpi-row {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 20px;
+  }
+  @media (max-width: 1200px) { .kpi-row { grid-template-columns: repeat(4, 1fr); } }
+  @media (max-width: 700px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+  .mini-kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; position: relative; overflow: hidden; }
+  .mini-kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+  .mini-kpi.gold::before   { background: var(--gold); }
+  .mini-kpi.green::before  { background: var(--green); }
+  .mini-kpi.orange::before { background: var(--accent); }
+  .mini-kpi.purple::before { background: var(--purple); }
+  .mini-kpi.blue::before   { background: var(--blue); }
+  .mini-kpi.red::before    { background: var(--red); }
+  .mini-kpi.teal::before   { background: var(--teal); }
+  .mini-kpi-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+  .mini-kpi-value { font-size: 18px; font-weight: 700; line-height: 1.1; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px;
+  }
+  .section-hdr { display: flex; align-items: baseline; justify-content: space-between; margin: 8px 0 12px; gap: 12px; flex-wrap: wrap; }
+  .section-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+  .section-sub { font-size: 12px; color: var(--text-dim); }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
+  .summary-cell .label { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+  .summary-cell .value { font-size: 18px; font-weight: 700; }
+
+  .leakage-note {
+    margin-top: 12px; padding: 10px 14px;
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.18);
+    border-radius: var(--radius-sm);
+    font-size: 12px; color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--panel-2); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+  td.r, th.r { text-align: right; }
+  td.mono { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  td.negative { color: var(--red); }
+  td.profit { font-weight: 700; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge.green  { background: rgba(74, 222, 128, 0.15);  color: var(--green); }
+  .badge.orange { background: rgba(255, 107, 53, 0.15);  color: var(--accent); }
+  .badge.red    { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+  .badge.muted  { background: var(--panel-2);            color: var(--text-dim); }
+
+  .empty { text-align: center; padding: 80px 20px; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; }
+  .empty-title { font-size: 15px; margin-bottom: 4px; color: var(--text); }
+  .empty-sub { font-size: 13px; }
+  .loading { color: var(--text-dim); font-size: 14px; padding: 40px 0; text-align: center; }
+
+  .unmatched-warn { color: var(--red); }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 13px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input { width: 100%; padding: 11px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; margin-bottom: 8px; }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Role modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
+      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
+      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
+      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
+    </div>
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
+        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav>
+    <a href="/">Tracker</a>
+    <a href="/dashboard.html">Dashboard</a>
+    <a href="/upload.html">Upload</a>
+    <a href="/analytics.html">Analytics</a>
+    <a href="/ads.html">Ad Performance</a>
+    <a href="/profit.html" class="active">Profit</a>
+    <a href="/goal.html">Goal Tracker</a>
+    <span class="role-pill" id="role-pill" onclick="logout()"></span>
+  </nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">Profit</div>
+  <div class="page-sub">Revenue, COGS, fees, ad spend, agency fees, creator connections, 8% Amazon leakage</div>
+
+  <div class="controls">
+    <span class="ctrl-label">Range:</span>
+    <input type="date" id="p-start" />
+    <span class="ctrl-label">to</span>
+    <input type="date" id="p-end" />
+    <button class="btn primary" onclick="loadProfit()">Run</button>
+    <div class="divider"></div>
+    <button class="btn sm" onclick="setQuickRange(1)">1D</button>
+    <button class="btn sm" onclick="setQuickRange(7)">7D</button>
+    <button class="btn sm" onclick="setQuickRange(30)">30D</button>
+    <button class="btn sm" onclick="setQuickRange(90)">90D</button>
+    <div class="divider"></div>
+    <button class="btn ghost sm" onclick="alert('COGS, Agency Fees, and Creator Connections will be editable on the Settings page (coming soon).')">Edit COGS / Agency / Creators</button>
+  </div>
+
+  <div id="profit-content">
+    <div class="empty"><div class="empty-icon">💰</div><div class="empty-title">Select a date range and click Run</div></div>
+  </div>
+</main>
+
+<script>
+  const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+  let role = null;
+  let pendingRole = null;
+
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+  function checkPw() {
+    if (!pendingRole) return;
+    if (document.getElementById('pw-input').value === ROLES[pendingRole].password) enterApp(pendingRole);
+    else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+    initDates();
+  }
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
+
+  // ============================================================================
+  // Helpers
+  // ============================================================================
+  function toISO(d) { return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0'); }
+  function parseISO(s) {
+    if (!s) return null;
+    const parts = String(s).slice(0,10).split('-').map(n => parseInt(n,10));
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    return new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
+  }
+  function addDays(d, n) { const x = new Date(d.getTime()); x.setUTCDate(x.getUTCDate()+n); return x; }
+  function daysInMonth(year, monthIdx) { return new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate(); }
+  function fmt(n)  { if (n==null) return '—'; const r = Math.round(n); return (r < 0 ? '-$' : '$') + Math.abs(r).toLocaleString(); }
+  function fmtN(n) { if (n==null) return '—'; return Math.round(n).toLocaleString(); }
+  function fmtP(n) { if (n==null) return '—'; return (n*100).toFixed(2)+'%'; }
+
+  // ============================================================================
+  // Initial dates — anchored on latest sales
+  // ============================================================================
+  let _latestSalesDate = null;
+  async function getLatestSalesDate() {
+    if (_latestSalesDate) return _latestSalesDate;
+    const { data } = await sb.from('sales_daily').select('date').order('date', { ascending: false }).limit(1);
+    if (data && data[0]) {
+      _latestSalesDate = (data[0].date instanceof Date) ? toISO(data[0].date) : String(data[0].date).slice(0,10);
+    }
+    return _latestSalesDate;
+  }
+
+  async function initDates() {
+    const latest = await getLatestSalesDate();
+    if (latest) {
+      const end = parseISO(latest);
+      const start = addDays(end, -29);
+      document.getElementById('p-start').value = toISO(start);
+      document.getElementById('p-end').value = toISO(end);
+    }
+  }
+
+  async function setQuickRange(days) {
+    const latest = await getLatestSalesDate();
+    if (!latest) {
+      document.getElementById('profit-content').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">No sales data uploaded yet.</div></div>';
+      return;
+    }
+    const end = parseISO(latest);
+    const start = addDays(end, -(days-1));
+    document.getElementById('p-start').value = toISO(start);
+    document.getElementById('p-end').value = toISO(end);
+    loadProfit();
+  }
+
+  // ============================================================================
+  // Product groups + prefix matching
+  // ============================================================================
+  let _prefixMap = null; // [{ prefix, group, cogs, fbm_fee, fba_fee }] longest first
+
+  async function loadPrefixMap() {
+    if (_prefixMap) return;
+    const { data } = await sb
+      .from('product_group_prefixes')
+      .select('prefix, product_groups(group_name, cogs, fbm_fee, fba_fee)');
+    const list = (data || []).map(p => ({
+      prefix: p.prefix.toUpperCase(),
+      group: p.product_groups?.group_name || 'Other',
+      cogs:    parseFloat(p.product_groups?.cogs || 0),
+      fbm_fee: parseFloat(p.product_groups?.fbm_fee || 0),
+      fba_fee: parseFloat(p.product_groups?.fba_fee || 0),
+    }));
+    list.sort((a, b) => b.prefix.length - a.prefix.length);
+    _prefixMap = list;
+  }
+
+  function matchPrefix(sku) {
+    const s = String(sku || '').toUpperCase();
+    for (const p of _prefixMap) {
+      if (s.startsWith(p.prefix)) return p;
+    }
+    return null;
+  }
+
+  // ============================================================================
+  // Calculator — port of profit_calculator.py
+  // ============================================================================
+  const AMAZON_LEAKAGE_RATE = 0.08;
+  const AGENCY_FLAT_FEE_CAP = 5950;
+  const MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+
+  function calculateAgencyFees(agencyConfig, start, end) {
+    if (!start || !end) return { flat: 0, variable: 0 };
+    const monthlyPayments = agencyConfig.monthly_payments || {};
+    let flat = 0, variable = 0;
+
+    for (const [monthName, amountRaw] of Object.entries(monthlyPayments)) {
+      if (!amountRaw) continue;
+      const amount = parseFloat(amountRaw);
+      if (isNaN(amount)) continue;
+      const monthIdx = MONTH_NAMES.indexOf(monthName.toLowerCase());
+      if (monthIdx === -1) continue;
+
+      for (let year = start.getUTCFullYear(); year <= end.getUTCFullYear(); year++) {
+        const monthStart = new Date(Date.UTC(year, monthIdx, 1));
+        const lastDay = daysInMonth(year, monthIdx);
+        const monthEnd = new Date(Date.UTC(year, monthIdx, lastDay));
+
+        const overlapStart = start > monthStart ? start : monthStart;
+        const overlapEnd   = end   < monthEnd   ? end   : monthEnd;
+        if (overlapStart > overlapEnd) continue;
+
+        const overlapDays = Math.round((overlapEnd - overlapStart) / 86400000) + 1;
+        const prorate = overlapDays / lastDay;
+
+        flat     += Math.min(amount, AGENCY_FLAT_FEE_CAP) * prorate;
+        variable += Math.max(amount - AGENCY_FLAT_FEE_CAP, 0) * prorate;
+      }
+    }
+    return { flat, variable };
+  }
+
+  function calculateProfit(salesRows, adRows, creatorRows, agencyConfig, startStr, endStr) {
+    const start = parseISO(startStr);
+    const end   = parseISO(endStr);
+
+    // ---- Sales aggregation ----
+    const productMap = new Map();   // prefix -> {...}
+    const unmatched = new Map();    // sku -> {units, revenue}
+
+    for (const r of salesRows) {
+      const sku = String(r.sku || '').toUpperCase();
+      const p = matchPrefix(sku);
+      if (!p) {
+        const v = unmatched.get(sku) || { units: 0, revenue: 0 };
+        v.units += r.units || 0;
+        v.revenue += parseFloat(r.revenue || 0);
+        unmatched.set(sku, v);
+        continue;
+      }
+      let pm = productMap.get(p.prefix);
+      if (!pm) {
+        pm = { group: p.group, units: 0, revenue: 0, fees: 0, ad_spend: 0, agency_fees: 0, cogs_per_unit: p.cogs, _fba_fee: p.fba_fee, _fbm_fee: p.fbm_fee };
+        productMap.set(p.prefix, pm);
+      }
+      const fee = r.is_fba ? p.fba_fee : p.fbm_fee;
+      pm.units   += r.units || 0;
+      pm.revenue += parseFloat(r.revenue || 0);
+      pm.fees    += (r.units || 0) * fee;
+    }
+
+    // ---- Ad spend aggregation ----
+    let totalAdSpend = 0;
+    let matchedAdSpend = 0;
+    const unmatchedAdSkus = new Map();
+
+    for (const a of adRows) {
+      const spend = parseFloat(a.spend || 0);
+      totalAdSpend += spend;
+      const sku = String(a.sku || '').toUpperCase();
+      const p = matchPrefix(sku);
+      if (p && productMap.has(p.prefix)) {
+        productMap.get(p.prefix).ad_spend += spend;
+        matchedAdSpend += spend;
+      } else {
+        unmatchedAdSkus.set(sku, (unmatchedAdSkus.get(sku) || 0) + spend);
+      }
+    }
+
+    // Spread unmatched ad spend evenly across product groups
+    const unmatchedTotal = [...unmatchedAdSkus.values()].reduce((s, v) => s + v, 0);
+    if (unmatchedTotal > 0 && productMap.size > 0) {
+      const spread = unmatchedTotal / productMap.size;
+      for (const pm of productMap.values()) pm.ad_spend += spread;
+    }
+
+    // ---- Agency fees ----
+    const agency = calculateAgencyFees(agencyConfig || {}, start, end);
+    const totalAgency = agency.flat + agency.variable;
+    const totalProductAd = [...productMap.values()].reduce((s, p) => s + p.ad_spend, 0);
+    const productCount = productMap.size;
+
+    for (const pm of productMap.values()) {
+      const flatShare = productCount > 0 ? agency.flat / productCount : 0;
+      const varShare  = totalProductAd > 0
+        ? (agency.variable * pm.ad_spend / totalProductAd)
+        : (productCount > 0 ? agency.variable / productCount : 0);
+      pm.agency_fees = flatShare + varShare;
+    }
+
+    // ---- Creator metrics ----
+    let creatorSpend = 0, creatorIncome = 0;
+    for (const cc of creatorRows) {
+      const d = parseISO(cc.date);
+      if (!d) continue;
+      if (start && d < start) continue;
+      if (end && d > end) continue;
+      creatorSpend  += parseFloat(cc.spend || 0);
+      creatorIncome += parseFloat(cc.income || 0);
+    }
+
+    // ---- Build output rows + totals ----
+    const outputRows = [];
+    let totalUnits = 0, totalRevenue = 0, totalCogs = 0, totalFees = 0, totalAds = 0, totalAgencyFees = 0;
+
+    const sortedPrefixes = [...productMap.entries()].sort((a, b) => b[1].revenue - a[1].revenue);
+    for (const [, p] of sortedPrefixes) {
+      const cogsTotal = p.units * p.cogs_per_unit;
+      const leakage = p.revenue * AMAZON_LEAKAGE_RATE;
+      const net = p.revenue - cogsTotal - p.fees - p.ad_spend - p.agency_fees - leakage;
+      const margin = p.revenue ? net / p.revenue : 0;
+
+      outputRows.push({
+        group: p.group,
+        units: p.units,
+        revenue: round2(p.revenue),
+        cogs: round2(cogsTotal),
+        amazon_fees: round2(p.fees),
+        ad_spend: round2(p.ad_spend),
+        agency_fees: round2(p.agency_fees),
+        amazon_leakage: round2(leakage),
+        net_profit: round2(net),
+        margin: Math.round(margin * 10000) / 10000,
+      });
+
+      totalUnits += p.units;
+      totalRevenue += p.revenue;
+      totalCogs += cogsTotal;
+      totalFees += p.fees;
+      totalAds += p.ad_spend;
+      totalAgencyFees += p.agency_fees;
+    }
+
+    outputRows.sort((a, b) => b.net_profit - a.net_profit);
+
+    const grandRevenue = totalRevenue + creatorIncome;
+    const totalLeakage = grandRevenue * AMAZON_LEAKAGE_RATE;
+    const grandProfit = grandRevenue - totalCogs - totalFees - totalAds - totalAgencyFees - creatorSpend - totalLeakage;
+    const grandMargin = grandRevenue ? grandProfit / grandRevenue : 0;
+    const tacos = grandRevenue ? totalAds / grandRevenue : 0;
+
+    // Unmatched SKUs — top 20 by revenue
+    const unmatchedArr = [...unmatched.entries()]
+      .map(([sku, v]) => ({ sku, units: v.units, revenue: round2(v.revenue) }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 20);
+
+    return {
+      summary: {
+        units: totalUnits,
+        revenue: round2(grandRevenue),
+        cogs: round2(totalCogs),
+        amazon_fees: round2(totalFees),
+        ad_spend: round2(totalAds),
+        agency_fees: round2(totalAgencyFees),
+        creator_spend: round2(creatorSpend),
+        creator_income: round2(creatorIncome),
+        amazon_leakage: round2(totalLeakage),
+        net_profit: round2(grandProfit),
+        margin: Math.round(grandMargin * 10000) / 10000,
+        tacos: Math.round(tacos * 10000) / 10000,
+      },
+      rows: outputRows,
+      unmatched_skus: unmatchedArr,
+      ad_debug: {
+        total_spend: round2(totalAdSpend),
+        matched_spend: round2(matchedAdSpend),
+        unmatched_spread: round2(unmatchedTotal),
+      },
+    };
+  }
+
+  function round2(n) { return Math.round(n * 100) / 100; }
+
+  // ============================================================================
+  // Data load
+  // ============================================================================
+  async function fetchPaged(table, columns, filters) {
+    const all = [];
+    let from = 0;
+    const page = 1000;
+    while (true) {
+      let q = sb.from(table).select(columns);
+      for (const [k, op, v] of filters) q = q[op](k, v);
+      q = q.range(from, from + page - 1);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < page) break;
+      from += page;
+    }
+    return all;
+  }
+
+  async function loadProfit() {
+    const s = document.getElementById('p-start').value;
+    const e = document.getElementById('p-end').value;
+    if (!s || !e) {
+      document.getElementById('profit-content').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Pick a start and end date.</div></div>';
+      return;
+    }
+
+    document.getElementById('profit-content').innerHTML = '<div class="loading">Loading data…</div>';
+
+    try {
+      await loadPrefixMap();
+
+      const [sales, ads, creators, configRows] = await Promise.all([
+        fetchPaged('sales_daily', 'date, sku, is_fba, units, revenue', [['date','gte',s], ['date','lte',e]]),
+        fetchPaged('ad_daily',   'date, sku, spend',                   [['date','gte',s], ['date','lte',e]]),
+        fetchPaged('creator_connections', 'date, spend, income',       [['date','gte',s], ['date','lte',e]]),
+        sb.from('dashboard_config').select('*').eq('id', 1).single(),
+      ]);
+
+      const agencyConfig = configRows.data?.agency || {};
+
+      const result = calculateProfit(
+        sales.map(r => ({ sku: r.sku, is_fba: !!r.is_fba, units: r.units || 0, revenue: r.revenue })),
+        ads.map(r => ({ sku: r.sku, spend: r.spend })),
+        creators.map(r => ({
+          date: (r.date instanceof Date) ? toISO(r.date) : String(r.date).slice(0,10),
+          spend: r.spend, income: r.income,
+        })),
+        agencyConfig,
+        s, e
+      );
+
+      window._profitData = result;
+      renderProfit(result, s, e);
+    } catch (err) {
+      document.getElementById('profit-content').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Error</div><div class="empty-sub">${err.message}</div></div>`;
+    }
+  }
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+  function miniKpi(label, value, color) {
+    return `<div class="mini-kpi ${color}"><div class="mini-kpi-label">${label}</div><div class="mini-kpi-value">${value}</div></div>`;
+  }
+
+  function renderProfit(d, startStr, endStr) {
+    const s = d.summary;
+    let html = '';
+
+    // KPIs
+    html += '<div class="kpi-row">';
+    html += miniKpi('Revenue',        fmt(s.revenue), 'orange');
+    html += miniKpi('Net Profit',     fmt(s.net_profit), s.net_profit >= 0 ? 'green' : 'red');
+    html += miniKpi('Margin',         fmtP(s.margin), 'blue');
+    html += miniKpi('TACOS',          fmtP(s.tacos), 'purple');
+    html += miniKpi('Ad Spend',       fmt(s.ad_spend), 'gold');
+    html += miniKpi('Amazon Fees',    fmt(s.amazon_fees), 'teal');
+    html += miniKpi('Amazon Leakage', fmt(s.amazon_leakage), 'red');
+    html += '</div>';
+
+    // Summary card
+    html += '<div class="card" style="margin-bottom:20px;">';
+    html += '<div class="section-hdr"><div class="section-title">Summary</div><div class="section-sub">' + startStr + ' → ' + endStr + '</div></div>';
+    html += '<div class="summary-grid">';
+    const fields = [
+      ['Units',                fmtN(s.units)],
+      ['COGS',                 fmt(s.cogs)],
+      ['Agency Fees',          fmt(s.agency_fees)],
+      ['Creator Spend',        fmt(s.creator_spend)],
+      ['Creator Income',       fmt(s.creator_income)],
+      ['Amazon Leakage (8%)',  fmt(s.amazon_leakage)],
+    ];
+    for (const [l, v] of fields) {
+      html += `<div class="summary-cell"><div class="label">${l}</div><div class="value">${v}</div></div>`;
+    }
+    html += '</div>';
+    html += `<div class="leakage-note">⚠️ Amazon Leakage is an 8% estimate applied to gross revenue to account for refunds, promo rebates, reimbursement reversals, misc adjustments, and shipping corrections.</div>`;
+    html += '</div>';
+
+    // Profit by product group
+    html += '<div class="section-hdr"><div class="section-title">Profit by Product Group</div></div>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>Product Group</th><th class="r">Units</th><th class="r">Revenue</th><th class="r">COGS</th><th class="r">Amazon Fees</th><th class="r">Ad Spend</th><th class="r">Agency</th><th class="r">Leakage</th><th class="r">Net Profit</th><th class="r">Margin</th>';
+    html += '</tr></thead><tbody>';
+    for (const r of d.rows) {
+      const mc = r.margin >= 0.4 ? 'green' : r.margin >= 0.2 ? 'orange' : 'red';
+      const profitCls = r.net_profit < 0 ? ' negative' : '';
+      html += `<tr>
+        <td>${r.group}</td>
+        <td class="r">${fmtN(r.units)}</td>
+        <td class="r">${fmt(r.revenue)}</td>
+        <td class="r">${fmt(r.cogs)}</td>
+        <td class="r">${fmt(r.amazon_fees)}</td>
+        <td class="r">${fmt(r.ad_spend)}</td>
+        <td class="r">${fmt(r.agency_fees)}</td>
+        <td class="r" style="color: var(--red);">${fmt(r.amazon_leakage)}</td>
+        <td class="r profit${profitCls}">${fmt(r.net_profit)}</td>
+        <td class="r"><span class="badge ${mc}">${fmtP(r.margin)}</span></td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+
+    // Unmatched SKUs warning
+    if (d.unmatched_skus && d.unmatched_skus.length > 0) {
+      const totalUnmatchedRev = d.unmatched_skus.reduce((s, u) => s + u.revenue, 0);
+      html += '<div class="section-hdr"><div class="section-title unmatched-warn">⚠️ Unmatched SKUs — Not Included in Profit</div>';
+      html += `<div class="section-sub">${d.unmatched_skus.length} SKUs · ${fmt(totalUnmatchedRev)} revenue excluded · Add their prefixes to a Product Group in Settings (coming soon)</div></div>`;
+      html += '<div class="table-wrap"><table><thead><tr><th>SKU</th><th class="r">Units</th><th class="r">Revenue (excluded)</th></tr></thead><tbody>';
+      for (const u of d.unmatched_skus) {
+        html += `<tr><td class="mono unmatched-warn">${u.sku}</td><td class="r">${fmtN(u.units)}</td><td class="r unmatched-warn">${fmt(u.revenue)}</td></tr>`;
+      }
+      html += '</tbody></table></div>';
+    }
+
+    document.getElementById('profit-content').innerHTML = html;
+  }
+</script>
+
+</body>
+</html>
