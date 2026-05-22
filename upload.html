@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upload — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--text); font-family:'DM Sans',system-ui,sans-serif; }
+  body { min-height:100vh; }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel);
+  }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy      { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin    { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
+  main { max-width: 980px; margin: 0 auto; padding: 32px; }
+  main.hidden { display: none; }
+  h2 { font-size: 14px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 16px 0; }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 48px 24px;
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .dropzone.drag { border-color: var(--accent); background: rgba(255,107,53,0.06); }
+  .dropzone.disabled { opacity: 0.5; cursor: not-allowed; }
+  .dropzone .big { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .dropzone .small { font-size: 13px; color: var(--text-dim); }
+  .dropzone input[type=file] { display: none; }
+  .dropzone .icon {
+    width: 44px; height: 44px; margin: 0 auto 14px;
+    border-radius: 50%; background: var(--panel-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--accent);
+  }
+
+  /* Preview card */
+  .preview {
+    margin-top: 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+  }
+  .preview h3 { margin: 0 0 4px 0; font-size: 16px; font-weight: 700; }
+  .preview .sub { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; }
+
+  .field-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .field { flex: 1; min-width: 180px; }
+  .field label { display: block; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .field .value { font-size: 14px; font-weight: 500; }
+  .field input[type=date] {
+    padding: 8px 10px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 14px;
+    width: 180px;
+    color-scheme: dark;
+  }
+
+  .btn {
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+  }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.92; }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+  .btn.ghost:hover { color: var(--text); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-row { display: flex; gap: 8px; }
+
+  /* Progress / status */
+  .status { font-size: 13px; color: var(--text-dim); margin-top: 12px; }
+  .status.ok { color: var(--green); }
+  .status.err { color: var(--red); }
+  .status.warn { color: var(--yellow); }
+
+  .progress {
+    margin-top: 12px;
+    height: 6px;
+    background: var(--bg);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress .bar {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s;
+    width: 0%;
+  }
+
+  /* Recent uploads */
+  .uploads-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .uploads-table th, .uploads-table td {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .uploads-table th {
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    background: var(--panel-2);
+  }
+  .uploads-table tr:last-child td { border-bottom: none; }
+  .uploads-table .empty { text-align: center; color: var(--text-dim); padding: 24px; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--panel-2);
+    color: var(--text-dim);
+  }
+  .badge.sales { background: rgba(255, 107, 53, 0.15); color: var(--accent); }
+  .badge.ad    { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
+  .badge.fba   { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+  .badge.blb   { background: rgba(56, 189, 248, 0.15); color: var(--blue); }
+  .badge.done  { background: rgba(74, 222, 128, 0.15); color: var(--green); }
+  .badge.error { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+
+  /* Role modal — same as dashboard.html */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 13px 14px; border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 14px; font-weight: 500; text-align: left;
+    cursor: pointer; display: flex; align-items: center; gap: 10px;
+  }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input {
+    width: 100%; padding: 11px 12px;
+    font-family: 'DM Sans', sans-serif; font-size: 14px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    outline: none; margin-bottom: 8px;
+  }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+
+  /* Access denied panel */
+  .access-denied {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    text-align: center;
+    margin-top: 24px;
+  }
+  .access-denied .icon { font-size: 36px; margin-bottom: 12px; }
+  .access-denied h3 { margin: 0 0 6px 0; font-size: 16px; }
+  .access-denied p { color: var(--text-dim); font-size: 13px; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- Role-pick modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
+      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
+      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
+      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
+    </div>
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password"
+             onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
+        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav>
+    <a href="/">Tracker</a>
+    <a href="/dashboard.html">Dashboard</a>
+    <a href="/upload.html" class="active">Upload</a>
+    <span class="role-pill" id="role-pill" onclick="logout()" title="Click to switch role"></span>
+  </nav>
+</header>
+
+<main id="app-main" class="hidden">
+
+  <!-- Coy-only panel -->
+  <div id="upload-panel" style="display:none;">
+    <h2>Upload a daily file</h2>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+      <div class="icon">↑</div>
+      <div class="big">Drag a CSV here, or click to choose</div>
+      <div class="small">Sales · Ads · FBA Inventory · BURLEBO Inventory</div>
+      <input type="file" id="file-input" accept=".csv">
+    </div>
+    <div id="preview-container"></div>
+
+    <h2 style="margin-top: 32px;">Recent uploads</h2>
+    <div id="uploads-list"></div>
+  </div>
+
+  <!-- Non-Coy panel -->
+  <div id="denied-panel" class="access-denied" style="display:none;">
+    <div class="icon">🔒</div>
+    <h3>Upload restricted to Owner</h3>
+    <p>Only Coy can upload daily files. Switch to the Coy role in the top right if that's you.</p>
+  </div>
+
+</main>
+
+<script>
+  // ============================================================================
+  // Setup
+  // ============================================================================
+  const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+  let role = null;
+  let pendingRole = null;
+
+  // ============================================================================
+  // Auth flow
+  // ============================================================================
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+  function checkPw() {
+    if (!pendingRole) return;
+    const val = document.getElementById('pw-input').value;
+    if (val === ROLES[pendingRole].password) {
+      enterApp(pendingRole);
+    } else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+
+    if (r === 'coy') {
+      document.getElementById('upload-panel').style.display = 'block';
+      document.getElementById('denied-panel').style.display = 'none';
+      initUpload();
+      loadRecentUploads();
+    } else {
+      document.getElementById('upload-panel').style.display = 'none';
+      document.getElementById('denied-panel').style.display = 'block';
+    }
+  }
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
+
+  // ============================================================================
+  // File type detection (from headers)
+  // ============================================================================
+  function detectFileType(headers) {
+    const hset = new Set(headers.map(h => h.trim().toLowerCase()));
+    // Sales: distinctive columns
+    if (hset.has('(parent) asin') && hset.has('sessions - total') && hset.has('ordered product sales')) {
+      return 'sales';
+    }
+    // Ads: distinctive columns
+    if (hset.has('date range') && (hset.has('advertised product sku') || hset.has('advertised sku'))) {
+      return 'ad';
+    }
+    // FBA inventory: distinctive columns
+    if (hset.has('afn-fulfillable-quantity') || hset.has('afn-total-quantity')) {
+      return 'fba';
+    }
+    // BURLEBO inventory: distinctive columns
+    if (hset.has('channel') && hset.has('location') && hset.has('on hand available')) {
+      return 'blb';
+    }
+    return null;
+  }
+
+  // ============================================================================
+  // Helpers
+  // ============================================================================
+  function parseNumber(v, allowNeg = true) {
+    if (v == null || v === '') return 0;
+    let s = String(v).trim().replace(/\$/g, '').replace(/,/g, '').replace(/%/g, '');
+    if (allowNeg) s = s.replace(/\(/g, '-').replace(/\)/g, '');
+    const n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function parseAdDate(value) {
+    // "May 20, 2026 - May 20, 2026" -> "2026-05-20"
+    if (!value) return null;
+    const first = String(value).split('-')[0].trim();
+    const months = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+    const m = first.match(/^([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})$/);
+    if (m) {
+      const mo = months[m[1].slice(0,3).toLowerCase()];
+      if (mo == null) return null;
+      const d = new Date(Date.UTC(parseInt(m[3]), mo, parseInt(m[2])));
+      return d.toISOString().slice(0, 10);
+    }
+    // Fallback: try ISO
+    const iso = first.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return first;
+    return null;
+  }
+
+  function cleanSku(sku) {
+    if (!sku) return { sku: '', isFba: false };
+    const s = String(sku).toUpperCase().trim();
+    if (s.startsWith('FBA2-')) return { sku: s.slice(5), isFba: true };
+    if (s.startsWith('FBA-'))  return { sku: s.slice(4), isFba: true };
+    return { sku: s, isFba: false };
+  }
+
+  function yesterdayISO() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function formatDate(d) {
+    if (!d) return '—';
+    const [y, m, day] = d.split('-');
+    return new Date(Date.UTC(+y, +m - 1, +day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function timeAgo(ts) {
+    const sec = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (sec < 60) return 'just now';
+    if (sec < 3600) return Math.floor(sec/60) + 'm ago';
+    if (sec < 86400) return Math.floor(sec/3600) + 'h ago';
+    return Math.floor(sec/86400) + 'd ago';
+  }
+
+  // ============================================================================
+  // Drop zone wiring
+  // ============================================================================
+  function initUpload() {
+    const dz = document.getElementById('dropzone');
+    const input = document.getElementById('file-input');
+
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault();
+      dz.classList.remove('drag');
+      if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+    input.addEventListener('change', e => {
+      if (e.target.files.length > 0) handleFile(e.target.files[0]);
+      input.value = '';
+    });
+  }
+
+  let currentFile = null;
+  let currentRows = null;
+  let currentType = null;
+
+  async function handleFile(file) {
+    currentFile = file;
+    const container = document.getElementById('preview-container');
+    container.innerHTML = `
+      <div class="preview">
+        <h3>Reading file…</h3>
+        <div class="sub">${file.name} (${(file.size/1024).toFixed(1)} KB)</div>
+      </div>
+    `;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const headers = results.meta.fields || [];
+        const type = detectFileType(headers);
+        if (!type) {
+          container.innerHTML = `
+            <div class="preview">
+              <h3>Couldn't detect file type</h3>
+              <div class="sub">${file.name} — headers don't match any of the 4 known types.</div>
+              <div class="status err">Expected one of: Sales / Ad / FBA Inventory / BURLEBO Inventory.</div>
+              <button class="btn ghost" style="margin-top:12px" onclick="document.getElementById('preview-container').innerHTML=''">Dismiss</button>
+            </div>
+          `;
+          return;
+        }
+        currentType = type;
+        currentRows = results.data;
+        showPreview(type, file, results.data);
+      },
+      error: (err) => {
+        container.innerHTML = `<div class="preview"><h3>Parse error</h3><div class="status err">${err.message}</div></div>`;
+      }
+    });
+  }
+
+  function showPreview(type, file, rows) {
+    const container = document.getElementById('preview-container');
+    const typeLabels = {
+      sales: { title: 'Daily Sales', badge: 'sales', desc: `${rows.length} SKU rows` },
+      ad:    { title: 'Daily Ads',   badge: 'ad',    desc: `${rows.length} ad rows` },
+      fba:   { title: 'FBA Inventory snapshot', badge: 'fba', desc: `${rows.length} SKUs — replaces previous snapshot` },
+      blb:   { title: 'BURLEBO Inventory snapshot', badge: 'blb', desc: `${rows.length} rows across channels/locations — replaces previous snapshot` },
+    };
+    const t = typeLabels[type];
+
+    let dateFieldHtml = '';
+    if (type === 'sales') {
+      dateFieldHtml = `
+        <div class="field">
+          <label>Date this report is for</label>
+          <input type="date" id="sales-date" value="${yesterdayISO()}" max="${new Date().toISOString().slice(0,10)}">
+        </div>
+      `;
+    } else if (type === 'ad') {
+      // Detect date from first row's "Date range"
+      const dateCol = Object.keys(rows[0] || {}).find(k => k.trim().toLowerCase() === 'date range');
+      const detectedDate = dateCol ? parseAdDate(rows[0][dateCol]) : null;
+      dateFieldHtml = `
+        <div class="field">
+          <label>Date (from file)</label>
+          <div class="value">${formatDate(detectedDate)}${detectedDate ? '' : ' <span style="color:var(--red)">— could not detect</span>'}</div>
+        </div>
+      `;
+      if (detectedDate) container.dataset.adDate = detectedDate;
+    }
+
+    container.innerHTML = `
+      <div class="preview">
+        <h3><span class="badge ${t.badge}" style="vertical-align: middle; margin-right: 8px;">${t.title}</span></h3>
+        <div class="sub">${file.name} — ${t.desc}</div>
+        <div class="field-row">
+          ${dateFieldHtml}
+          <div class="field">
+            <label>File size</label>
+            <div class="value">${(file.size/1024).toFixed(1)} KB</div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost" onclick="cancelPreview()">Cancel</button>
+          <button class="btn primary" id="upload-btn" onclick="confirmAndUpload()">Upload</button>
+        </div>
+        <div id="upload-status"></div>
+        <div class="progress" id="progress" style="display:none;"><div class="bar" id="progress-bar"></div></div>
+      </div>
+    `;
+  }
+
+  function cancelPreview() {
+    currentFile = null; currentRows = null; currentType = null;
+    document.getElementById('preview-container').innerHTML = '';
+  }
+
+  // ============================================================================
+  // Upload — check for replacement, then commit
+  // ============================================================================
+  async function confirmAndUpload() {
+    const btn = document.getElementById('upload-btn');
+    const statusEl = document.getElementById('upload-status');
+    btn.disabled = true;
+    statusEl.className = 'status'; statusEl.textContent = 'Checking for existing data…';
+
+    let targetDate = null;
+    if (currentType === 'sales') {
+      targetDate = document.getElementById('sales-date').value;
+      if (!targetDate) { statusEl.className = 'status err'; statusEl.textContent = 'Please pick a date.'; btn.disabled = false; return; }
+    } else if (currentType === 'ad') {
+      targetDate = document.getElementById('preview-container').dataset.adDate;
+      if (!targetDate) { statusEl.className = 'status err'; statusEl.textContent = 'Could not detect a date in the file. Cannot proceed.'; btn.disabled = false; return; }
+    }
+
+    // Check existing
+    let existingCount = 0;
+    if (currentType === 'sales') {
+      const { count } = await sb.from('sales_daily').select('*', { count: 'exact', head: true }).eq('date', targetDate);
+      existingCount = count ?? 0;
+    } else if (currentType === 'ad') {
+      const { count } = await sb.from('ad_daily').select('*', { count: 'exact', head: true }).eq('date', targetDate);
+      existingCount = count ?? 0;
+    } else if (currentType === 'fba') {
+      const { count } = await sb.from('fba_inventory_snapshot').select('*', { count: 'exact', head: true });
+      existingCount = count ?? 0;
+    } else if (currentType === 'blb') {
+      const { count } = await sb.from('blb_inventory_snapshot').select('*', { count: 'exact', head: true });
+      existingCount = count ?? 0;
+    }
+
+    if (existingCount > 0) {
+      const msg = (currentType === 'sales' || currentType === 'ad')
+        ? `Replace ${existingCount.toLocaleString()} existing rows for ${formatDate(targetDate)}?`
+        : `Replace the existing snapshot (${existingCount.toLocaleString()} rows)?`;
+      if (!confirm(msg)) {
+        statusEl.className = 'status warn'; statusEl.textContent = 'Cancelled.';
+        btn.disabled = false; return;
+      }
+    }
+
+    // Create upload audit row
+    statusEl.textContent = 'Recording upload…';
+    const { data: uploadRow, error: upErr } = await sb.from('uploads').insert({
+      filename: currentFile.name,
+      file_type: currentType,
+      detected_date: targetDate,  // null for fba/blb
+      row_count: currentRows.length,
+      status: 'pending',
+    }).select().single();
+
+    if (upErr) {
+      statusEl.className = 'status err'; statusEl.textContent = 'Upload audit failed: ' + upErr.message;
+      btn.disabled = false; return;
+    }
+
+    const uploadId = uploadRow.id;
+    document.getElementById('progress').style.display = 'block';
+
+    try {
+      let result;
+      if (currentType === 'sales')      result = await uploadSales(currentRows, targetDate, uploadId);
+      else if (currentType === 'ad')    result = await uploadAds(currentRows, targetDate, uploadId);
+      else if (currentType === 'fba')   result = await uploadFba(currentRows, uploadId);
+      else if (currentType === 'blb')   result = await uploadBlb(currentRows, uploadId);
+
+      await sb.from('uploads').update({ status: 'done', row_count: result.inserted }).eq('id', uploadId);
+
+      statusEl.className = 'status ok';
+      statusEl.textContent = `✓ Uploaded ${result.inserted.toLocaleString()} rows.` +
+        (result.skipped ? ` (Skipped ${result.skipped} bad rows.)` : '');
+      document.getElementById('upload-btn').textContent = 'Done';
+      document.getElementById('progress-bar').style.width = '100%';
+
+      loadRecentUploads();
+      setTimeout(cancelPreview, 1500);
+    } catch (err) {
+      await sb.from('uploads').update({ status: 'error', error_msg: err.message }).eq('id', uploadId);
+      statusEl.className = 'status err';
+      statusEl.textContent = 'Upload failed: ' + err.message;
+      btn.disabled = false;
+    }
+  }
+
+  function setProgress(pct) {
+    document.getElementById('progress-bar').style.width = pct + '%';
+  }
+
+  async function batchInsert(table, rows, batchSize = 1000, onProgress) {
+    const total = rows.length;
+    let done = 0;
+    for (let i = 0; i < total; i += batchSize) {
+      const batch = rows.slice(i, i + batchSize);
+      const { error } = await sb.from(table).upsert(batch);
+      if (error) throw new Error(`${table}: ${error.message}`);
+      done += batch.length;
+      if (onProgress) onProgress(done, total);
+    }
+    return done;
+  }
+
+  // ---- Sales upload ----
+  async function uploadSales(rows, targetDate, uploadId) {
+    // Wipe existing rows for that date (so deleted SKUs disappear instead of lingering)
+    await sb.from('sales_daily').delete().eq('date', targetDate);
+
+    const toInsert = [];
+    let skipped = 0;
+    for (const r of rows) {
+      const rawSku = (r['SKU'] || '').trim();
+      if (!rawSku) { skipped++; continue; }
+      const { sku, isFba } = cleanSku(rawSku);
+
+      toInsert.push({
+        date: targetDate,
+        sku, raw_sku: rawSku, is_fba: isFba,
+        parent_asin: r['(Parent) ASIN'] || '',
+        child_asin:  r['(Child) ASIN']  || '',
+        title:       r['Title']         || '',
+        sessions:    Math.round(parseNumber(r['Sessions - Total']) + parseNumber(r['Sessions - Total - B2B'])),
+        page_views:  Math.round(parseNumber(r['Page Views - Total']) + parseNumber(r['Page Views - Total - B2B'])),
+        buy_box_pct: parseNumber(r['Featured Offer (Buy Box) Percentage']) / 100,
+        units:       Math.round(parseNumber(r['Total Order Items']) + parseNumber(r['Total Order Items - B2B'])),
+        revenue:     parseNumber(r['Ordered Product Sales']) + parseNumber(r['Ordered Product Sales - B2B']),
+        upload_id:   uploadId,
+      });
+    }
+
+    const inserted = await batchInsert('sales_daily', toInsert, 1000, (done, total) => setProgress(done/total*100));
+    return { inserted, skipped };
+  }
+
+  // ---- Ad upload ----
+  async function uploadAds(rows, targetDate, uploadId) {
+    await sb.from('ad_daily').delete().eq('date', targetDate);
+
+    // Find columns once
+    const sample = rows[0] || {};
+    const colSku = Object.keys(sample).find(k => k.trim().toLowerCase() === 'advertised product sku') ||
+                   Object.keys(sample).find(k => k.trim().toLowerCase() === 'advertised sku') ||
+                   Object.keys(sample).find(k => k.trim().toLowerCase() === 'sku');
+    const colCost = Object.keys(sample).find(k => k.trim().toLowerCase() === 'total cost') ||
+                    Object.keys(sample).find(k => k.trim().toLowerCase() === 'spend') ||
+                    Object.keys(sample).find(k => k.trim().toLowerCase() === 'cost');
+    const colSales = Object.keys(sample).find(k => k.trim().toLowerCase() === 'sales') ||
+                     Object.keys(sample).find(k => k.trim().toLowerCase() === 'sales from clicks');
+    const colPurch = Object.keys(sample).find(k => k.trim().toLowerCase() === 'purchases') ||
+                     Object.keys(sample).find(k => k.trim().toLowerCase() === 'purchases from clicks');
+    const colRoas  = Object.keys(sample).find(k => k.trim().toLowerCase() === 'roas') ||
+                     Object.keys(sample).find(k => k.trim().toLowerCase() === 'roas from clicks');
+    const colCampId   = Object.keys(sample).find(k => k.trim().toLowerCase() === 'campaign id');
+    const colCampName = Object.keys(sample).find(k => k.trim().toLowerCase() === 'campaign name');
+
+    // Aggregate by (date, sku, campaign_id) so duplicates in source don't violate unique constraint
+    const map = new Map();
+    let skipped = 0;
+    for (const r of rows) {
+      const rawSku = (r[colSku] || '').trim();
+      if (!rawSku) { skipped++; continue; }
+      const { sku } = cleanSku(rawSku);
+      const campaignId = colCampId ? (r[colCampId] || '') : '';
+      const key = `${targetDate}|${rawSku}|${campaignId}`;
+      const existing = map.get(key);
+      const spend = colCost ? parseNumber(r[colCost]) : 0;
+      const sales = colSales ? parseNumber(r[colSales]) : 0;
+      const purch = colPurch ? Math.round(parseNumber(r[colPurch])) : 0;
+      const roas  = colRoas  ? parseNumber(r[colRoas]) : 0;
+      if (existing) {
+        existing.spend += spend;
+        existing.sales += sales;
+        existing.purchases += purch;
+        // roas: keep last (it's a derived metric anyway)
+        existing.roas = roas;
+      } else {
+        map.set(key, {
+          date: targetDate,
+          sku, raw_sku: rawSku,
+          campaign_id: campaignId,
+          campaign_name: colCampName ? (r[colCampName] || '') : '',
+          spend, sales, purchases: purch, roas,
+          upload_id: uploadId,
+        });
+      }
+    }
+    const toInsert = Array.from(map.values());
+    const inserted = await batchInsert('ad_daily', toInsert, 1000, (done, total) => setProgress(done/total*100));
+    return { inserted, skipped };
+  }
+
+  // ---- FBA snapshot upload ----
+  async function uploadFba(rows, uploadId) {
+    // Wipe ALL previous FBA snapshot rows (we only keep the latest)
+    setProgress(5);
+    await sb.from('fba_inventory_snapshot').delete().gte('id', 0);
+    setProgress(15);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const toInsert = [];
+    let skipped = 0;
+    for (const r of rows) {
+      const rawSku = (r['sku'] || r['SKU'] || '').trim();
+      if (!rawSku) { skipped++; continue; }
+      const { sku } = cleanSku(rawSku);
+
+      toInsert.push({
+        snapshot_date: today,
+        sku, raw_sku: rawSku,
+        asin: r['asin'] || r['ASIN'] || '',
+        product_name: r['product-name'] || r['Product Name'] || '',
+        price: parseNumber(r['your-price']),
+        fulfillable: Math.round(parseNumber(r['afn-fulfillable-quantity'])),
+        unsellable:  Math.round(parseNumber(r['afn-unsellable-quantity'])),
+        reserved:    Math.round(parseNumber(r['afn-reserved-quantity'])),
+        total:       Math.round(parseNumber(r['afn-total-quantity'])),
+        inbound_working:   Math.round(parseNumber(r['afn-inbound-working-quantity'])),
+        inbound_shipped:   Math.round(parseNumber(r['afn-inbound-shipped-quantity'])),
+        inbound_receiving: Math.round(parseNumber(r['afn-inbound-receiving-quantity'])),
+        upload_id: uploadId,
+      });
+    }
+    const inserted = await batchInsert('fba_inventory_snapshot', toInsert, 1000, (done, total) => setProgress(15 + done/total*85));
+    return { inserted, skipped };
+  }
+
+  // ---- BURLEBO snapshot upload ----
+  async function uploadBlb(rows, uploadId) {
+    setProgress(2);
+    await sb.from('blb_inventory_snapshot').delete().gte('id', 0);
+    setProgress(8);
+
+    const today = new Date().toISOString().slice(0, 10);
+    // Find columns once (case-insensitive)
+    const sample = rows[0] || {};
+    const get = (name) => Object.keys(sample).find(k => k.trim().toLowerCase() === name.toLowerCase());
+    const colSku = get('sku');
+    const colChannel = get('channel');
+    const colLocation = get('location');
+    const colParent = get('parent item') || get('parent_item');
+    const colItem = get('item name') || get('item_name') || get('name');
+    const colOnHand = get('on hand') || get('on_hand');
+    const colAvail = get('on hand available') || get('available');
+    const colReserved = get('reserved');
+    const colCommitted = get('committed');
+    const colInbound = get('inbound') || get('on order');
+
+    // De-dupe by (sku, channel, location) — source can have duplicates
+    const map = new Map();
+    let skipped = 0;
+    for (const r of rows) {
+      const sku = colSku ? (r[colSku] || '').trim().toUpperCase() : '';
+      const channel = colChannel ? (r[colChannel] || '').trim() : '';
+      const location = colLocation ? (r[colLocation] || '').trim() : '';
+      if (!sku || !channel || !location) { skipped++; continue; }
+      const key = `${sku}|${channel}|${location}`;
+      const row = {
+        snapshot_date: today,
+        sku, parent_item: colParent ? (r[colParent] || '') : '',
+        item_name: colItem ? (r[colItem] || '') : '',
+        channel, location,
+        on_hand_total: colOnHand ? Math.round(parseNumber(r[colOnHand])) : 0,
+        on_hand_avail: colAvail ? Math.round(parseNumber(r[colAvail])) : 0,
+        reserved: colReserved ? Math.round(parseNumber(r[colReserved])) : 0,
+        committed: colCommitted ? Math.round(parseNumber(r[colCommitted])) : 0,
+        inbound_total: colInbound ? Math.round(parseNumber(r[colInbound])) : 0,
+        upload_id: uploadId,
+      };
+      // If duplicate, sum the quantities (some exports split by sub-channel)
+      const existing = map.get(key);
+      if (existing) {
+        existing.on_hand_total += row.on_hand_total;
+        existing.on_hand_avail += row.on_hand_avail;
+        existing.reserved      += row.reserved;
+        existing.committed     += row.committed;
+        existing.inbound_total += row.inbound_total;
+      } else {
+        map.set(key, row);
+      }
+    }
+
+    const toInsert = Array.from(map.values());
+    const inserted = await batchInsert('blb_inventory_snapshot', toInsert, 1000, (done, total) => setProgress(8 + done/total*92));
+    return { inserted, skipped };
+  }
+
+  // ============================================================================
+  // Recent uploads list
+  // ============================================================================
+  async function loadRecentUploads() {
+    const container = document.getElementById('uploads-list');
+    const { data, error } = await sb
+      .from('uploads')
+      .select('*')
+      .order('uploaded_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      container.innerHTML = `<div class="status err">${error.message}</div>`;
+      return;
+    }
+    if (!data || data.length === 0) {
+      container.innerHTML = `<div class="uploads-table"><div class="empty">No uploads yet.</div></div>`;
+      return;
+    }
+
+    const typeLabels = { sales: 'Sales', ad: 'Ad', fba: 'FBA Inventory', blb: 'BURLEBO Inventory' };
+    container.innerHTML = `
+      <table class="uploads-table">
+        <thead><tr><th>Type</th><th>For date</th><th>File</th><th>Rows</th><th>Status</th><th>Uploaded</th></tr></thead>
+        <tbody>
+          ${data.map(u => `
+            <tr>
+              <td><span class="badge ${u.file_type}">${typeLabels[u.file_type] || u.file_type}</span></td>
+              <td>${u.detected_date ? formatDate(u.detected_date) : '<span style="color:var(--text-dim)">snapshot</span>'}</td>
+              <td style="color:var(--text-dim); font-size:12px;">${u.filename}</td>
+              <td>${(u.row_count || 0).toLocaleString()}</td>
+              <td><span class="badge ${u.status === 'done' ? 'done' : u.status === 'error' ? 'error' : ''}">${u.status}</span></td>
+              <td style="color:var(--text-dim);">${timeAgo(u.uploaded_at)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+</script>
+
+</body>
+</html>
