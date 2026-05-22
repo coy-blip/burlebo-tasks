@@ -569,7 +569,46 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* IMPORT MODAL */
+  /* TABS */
+  .tab-nav {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .tab-btn {
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'DM Sans', sans-serif;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text3);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--text); }
+
+  /* COPYWRITING TAB */
+  .cw-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .cw-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+  }
+  .cw-group-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .cw-group-meta { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .cw-group-right { display: flex; align-items: center; gap: 10px; }
   .import-modal {
     position: fixed; inset: 0;
     background: rgba(26,25,23,0.5);
@@ -720,18 +759,27 @@
 
     <main class="main">
       <div class="page-title">Product launch tracker</div>
-      <div class="page-sub">Select a product group from the left to get started.</div>
+      <div class="page-sub" id="page-sub">Select a product group from the left to get started.</div>
 
-      <div class="stats-row" id="stats-row"></div>
-
-      <div class="add-bar" id="add-bar" style="display:none;">
-        <input type="text" id="new-product-input" placeholder="Add product — e.g. Go To Tee, olive colorway" />
-        <button class="btn btn-primary" onclick="addProduct()">+ Add product</button>
-        <button class="btn" onclick="document.getElementById('xlsx-upload').click()">&#8593; Import Excel</button>
-        <input type="file" id="xlsx-upload" accept=".xlsx" style="display:none;" onchange="handleExcelUpload(event)" />
+      <div id="tab-nav" style="display:none;" class="tab-nav">
+        <button class="tab-btn active" id="tab-tracker" onclick="switchTab('tracker')">Tracker</button>
+        <button class="tab-btn" id="tab-copywriting" onclick="switchTab('copywriting')">📄 Copywriting Docs</button>
       </div>
 
-      <div id="sections-container"></div>
+      <div id="tab-tracker-content">
+        <div class="stats-row" id="stats-row"></div>
+        <div class="add-bar" id="add-bar" style="display:none;">
+          <input type="text" id="new-product-input" placeholder="Add product — e.g. Go To Tee, olive colorway" />
+          <button class="btn btn-primary" onclick="addProduct()">+ Add product</button>
+          <button class="btn" onclick="document.getElementById('xlsx-upload').click()">&#8593; Import Excel</button>
+          <input type="file" id="xlsx-upload" accept=".xlsx" style="display:none;" onchange="handleExcelUpload(event)" />
+        </div>
+        <div id="sections-container"></div>
+      </div>
+
+      <div id="tab-copywriting-content" style="display:none;">
+        <div id="copywriting-container"></div>
+      </div>
     </main>
   </div>
 </div>
@@ -918,14 +966,99 @@ function totalStats() {
   return { totalTasks, doneTasks, complete, total: products.length };
 }
 
+let currentTab = 'tracker';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-tracker').className = 'tab-btn' + (tab === 'tracker' ? ' active' : '');
+  document.getElementById('tab-copywriting').className = 'tab-btn' + (tab === 'copywriting' ? ' active' : '');
+  document.getElementById('tab-tracker-content').style.display = tab === 'tracker' ? 'block' : 'none';
+  document.getElementById('tab-copywriting-content').style.display = tab === 'copywriting' ? 'block' : 'none';
+  if (tab === 'copywriting') renderCopywritingTab();
+}
+
+function renderCopywritingTab() {
+  const container = document.getElementById('copywriting-container');
+  if (!container) return;
+
+  // Get all unique groups that are missing a copywriting doc
+  const allGroups = {};
+  for (const p of products) {
+    const g = getProductGroup(p.name);
+    if (!allGroups[g]) allGroups[g] = 0;
+    allGroups[g]++;
+  }
+
+  const missingGroups = Object.entries(allGroups)
+    .filter(([g]) => !groupAssets[g]?.docUrl)
+    .sort((a,b) => a[0].localeCompare(b[0]));
+
+  const doneGroups = Object.entries(allGroups)
+    .filter(([g]) => groupAssets[g]?.docUrl)
+    .sort((a,b) => a[0].localeCompare(b[0]));
+
+  let html = '';
+
+  if (missingGroups.length === 0) {
+    html += `<div style="padding:40px;text-align:center;color:var(--green);font-size:14px;font-weight:500;">✅ All product groups have copywriting docs uploaded!</div>`;
+  } else {
+    html += `<div style="font-size:13px;color:var(--text3);margin-bottom:16px;">${missingGroups.length} group${missingGroups.length !== 1 ? 's' : ''} missing a copywriting doc</div>`;
+    for (const [g, count] of missingGroups) {
+      const safeG = g.replace(/"/g, '&quot;');
+      const gkey = 'cw-' + encodeURIComponent(g);
+      html += `<div class="cw-group">
+        <div class="cw-group-header">
+          <div>
+            <div class="cw-group-name">${g}</div>
+            <div class="cw-group-meta">${count} product${count !== 1 ? 's' : ''}</div>
+          </div>
+          <div class="cw-group-right">
+            <span id="cw-status-${gkey}" class="asset-uploading" style="display:none;">Uploading...</span>
+            <input type="file" id="cw-input-${gkey}" data-group="${safeG}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc(this.dataset.group, this)" />
+            <button class="btn btn-primary" onclick="document.getElementById('cw-input-${gkey}').click()">+ Upload copywriting doc</button>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
+
+  if (doneGroups.length > 0) {
+    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin:24px 0 10px;">Completed (${doneGroups.length})</div>`;
+    for (const [g] of doneGroups) {
+      const doc = groupAssets[g];
+      const safeG = g.replace(/"/g, '&quot;');
+      html += `<div class="cw-group" style="opacity:0.7;">
+        <div class="cw-group-header">
+          <div>
+            <div class="cw-group-name">${g}</div>
+            <div class="cw-group-meta">✅ ${doc.docName}</div>
+          </div>
+          <div class="cw-group-right">
+            <a class="asset-link" href="${doc.docUrl}" target="_blank">📎 View doc</a>
+            <button class="asset-clear" data-group="${safeG}" onclick="clearGroupDoc(this.dataset.group)" title="Remove">✕</button>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
+
+  container.innerHTML = html;
+}
+
 function render() {
+  const tabNav = document.getElementById('tab-nav');
+  if (tabNav) tabNav.style.display = role === 'coy' ? 'flex' : 'none';
+  if (role !== 'coy' && currentTab === 'copywriting') switchTab('tracker');
+
   renderSidebar();
   renderStats();
   renderSections();
-  // Update page sub based on selection
-  const sub = document.querySelector('.page-sub');
+  if (currentTab === 'copywriting') renderCopywritingTab();
+
+  const sub = document.getElementById('page-sub');
   if (sub) {
-    if (selectedGroups.size === 0) sub.textContent = 'Select a product group from the left to get started.';
+    if (currentTab === 'copywriting') sub.textContent = 'Product groups missing a copywriting doc.';
+    else if (selectedGroups.size === 0) sub.textContent = 'Select a product group from the left to get started.';
     else sub.textContent = `Showing ${[...selectedGroups].join(', ')}${selectedPriorities.size > 0 ? ' · ' + [...selectedPriorities].map(p=>PRIORITIES[p]?.label||p).join(', ') + ' priority' : ''}`;
   }
 }
@@ -1051,6 +1184,7 @@ async function uploadGroupDoc(group, input) {
   await saveGroupAssets();
   input.value = '';
   render();
+  if (currentTab === 'copywriting') renderCopywritingTab();
 }
 
 async function clearGroupDoc(group) {
