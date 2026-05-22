@@ -314,10 +314,89 @@
     text-transform: uppercase;
     letter-spacing: 0.07em;
     color: var(--text3);
-    padding: 10px 18px 6px;
+    padding: 10px 18px 0;
     border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
   .product-group:first-child .group-label { border-top: none; }
+  .group-assets {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 18px 10px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .group-asset-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 200px;
+  }
+  .asset-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text3);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .asset-value {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+  }
+  .asset-link {
+    font-size: 12px;
+    color: var(--coy);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+  .asset-link:hover { text-decoration: underline; }
+  .asset-input {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    min-width: 0;
+  }
+  .asset-input:focus { border-color: var(--border2); }
+  .asset-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: 'DM Sans', sans-serif;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+  .asset-btn:hover { background: var(--surface2); }
+  .asset-clear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text3);
+    font-size: 14px;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .asset-clear:hover { color: var(--red); }
+  .asset-uploading { font-size: 11px; color: var(--text3); font-style: italic; }
 
   /* EMPTY */
   .empty { padding: 28px 18px; text-align: center; color: var(--text3); font-size: 13px; }
@@ -712,6 +791,73 @@ function renderStats() {
   `;
 }
 
+let groupAssets = {}; // group name -> { docName, docUrl, dropboxLink }
+
+async function loadGroupAssets() {
+  const { data, error } = await sb.from('tasks').select('id, data').eq('id', 'group_assets');
+  if (data && data.length > 0) {
+    groupAssets = data[0].data || {};
+  } else {
+    // Insert row if missing
+    await sb.from('tasks').insert({ id: 'group_assets', data: {} });
+  }
+}
+
+async function saveGroupAssets() {
+  setSyncStatus('syncing', 'Saving...');
+  const { error } = await sb.from('tasks').upsert({ id: 'group_assets', data: groupAssets });
+  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
+}
+
+async function uploadGroupDoc(group, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const groupKey = 'content|' + encodeURIComponent(group);
+  const statusEl = document.getElementById('doc-status-' + groupKey);
+  if (statusEl) { statusEl.style.display = 'inline'; }
+
+  const fileName = group.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now() + '_' + file.name;
+  const { data, error } = await sb.storage.from('documents').upload(fileName, file, { upsert: true });
+
+  if (error) {
+    if (statusEl) statusEl.textContent = 'Upload failed.';
+    return;
+  }
+
+  const { data: urlData } = sb.storage.from('documents').getPublicUrl(fileName);
+  if (!groupAssets[group]) groupAssets[group] = {};
+  groupAssets[group].docName = file.name;
+  groupAssets[group].docUrl = urlData.publicUrl;
+  await saveGroupAssets();
+  input.value = '';
+  render();
+}
+
+async function clearGroupDoc(group) {
+  if (!confirm('Remove this doc?')) return;
+  if (groupAssets[group]) {
+    delete groupAssets[group].docName;
+    delete groupAssets[group].docUrl;
+  }
+  await saveGroupAssets();
+  render();
+}
+
+async function saveDropboxLink(group, val) {
+  const link = val.trim();
+  if (!link) return;
+  if (!groupAssets[group]) groupAssets[group] = {};
+  groupAssets[group].dropboxLink = link;
+  await saveGroupAssets();
+  render();
+}
+
+async function clearDropboxLink(group) {
+  if (groupAssets[group]) delete groupAssets[group].dropboxLink;
+  await saveGroupAssets();
+  render();
+}
+
 const PRIORITIES = { high: { label: 'High', color: '#9B1C1C', bg: '#FDF2F2' }, medium: { label: 'Medium', color: '#92400E', bg: '#FFFBEB' }, low: { label: 'Low', color: '#057A55', bg: '#F0FAF4' } };
 
 async function setPriority(productId, priority) {
@@ -771,7 +917,44 @@ function renderSections() {
           const group = getProductGroup(product.name);
           if (group !== lastGroup) {
             if (lastGroup !== null) html += `</div>`;
-            html += `<div class="product-group"><div class="group-label">${group}</div>`;
+            const groupKey = section.id + '|' + encodeURIComponent(group);
+            const groupData = groupAssets[group] || {};
+            const docFile = groupData.docName;
+            const docUrl = groupData.docUrl;
+            const dropboxLink = groupData.dropboxLink || '';
+
+            html += `<div class="product-group">
+              <div class="group-label">
+                <span>${group}</span>
+              </div>
+              <div class="group-assets">
+                <div class="group-asset-item">
+                  <span class="asset-label">📄 Doc</span>
+                  <div class="asset-value">
+                    ${docFile && docUrl
+                      ? `<a class="asset-link" href="${docUrl}" target="_blank" title="${docFile}">📎 ${docFile}</a>
+                         ${role === 'coy' ? `<button class="asset-clear" onclick="clearGroupDoc('${group}')" title="Remove">✕</button>` : ''}`
+                      : role === 'coy'
+                        ? `<span id="doc-status-${groupKey}" class="asset-uploading" style="display:none;">Uploading...</span>
+                           <input type="file" id="doc-input-${groupKey}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc('${group}', this)" />
+                           <button class="asset-btn" onclick="document.getElementById('doc-input-${groupKey}').click()">+ Upload doc</button>`
+                        : `<span style="font-size:12px;color:var(--text3);">No doc uploaded yet</span>`
+                    }
+                  </div>
+                </div>
+                <div class="group-asset-item">
+                  <span class="asset-label">📦 Dropbox</span>
+                  <div class="asset-value">
+                    ${dropboxLink
+                      ? `<a class="asset-link" href="${dropboxLink}" target="_blank" title="${dropboxLink}">🔗 View files</a>
+                         ${role === 'designer' ? `<button class="asset-clear" onclick="clearDropboxLink('${group}')" title="Remove">✕</button>` : ''}`
+                      : role === 'designer'
+                        ? `<input class="asset-input" id="dropbox-input-${groupKey}" type="url" placeholder="Paste Dropbox link..." onblur="saveDropboxLink('${group}', this.value)" onkeydown="if(event.key==='Enter')saveDropboxLink('${group}',this.value)" />`
+                        : `<span style="font-size:12px;color:var(--text3);">No Dropbox link yet</span>`
+                    }
+                  </div>
+                </div>
+              </div>`;
             lastGroup = group;
           }
 
@@ -1037,6 +1220,7 @@ async function confirmImport() {
 
 async function init() {
   await loadData();
+  await loadGroupAssets();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
 
@@ -1049,6 +1233,7 @@ async function init() {
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, async (payload) => {
       if (payload.new.id === 'state') taskState = payload.new.data || {};
       if (payload.new.id === 'products') products = payload.new.data || [];
+      if (payload.new.id === 'group_assets') groupAssets = payload.new.data || {};
       render();
       setSyncStatus('synced', 'Synced');
     })
