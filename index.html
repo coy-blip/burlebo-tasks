@@ -944,6 +944,20 @@ async function saveGroupAssets() {
   setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
 }
 
+async function setProductLive(productId, sectionId, val) {
+  const section = SECTIONS.find(s => s.id === sectionId);
+  if (!section) return;
+  if (!taskState[productId]) taskState[productId] = {};
+  if (!taskState[productId][sectionId]) taskState[productId][sectionId] = {};
+  for (const task of section.tasks) {
+    if (!isOverride(productId, sectionId, task.id)) {
+      taskState[productId][sectionId][task.id] = val;
+    }
+  }
+  render();
+  await saveState();
+}
+
 async function setGroupFlag(group, flag, val) {
   if (!groupAssets[group]) groupAssets[group] = {};
   groupAssets[group][flag] = val;
@@ -1306,11 +1320,23 @@ function renderSections() {
           const badgeLabel = status === 'complete' ? 'Complete' : status === 'progress' ? `${doneTasks}/${section.tasks.length} done` : 'Not started';
           const pri = product.priority;
           const priStyle = pri ? `style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:10px;color:${PRIORITIES[pri].color};background:${PRIORITIES[pri].bg};"` : '';
+          const isLive = section.id === 'upload' && status === 'complete';
+
+          // Live & Selling checkbox — only in upload section for Coy
+          const liveCheck = (section.id === 'upload' && role === 'coy') ? `
+            <label onclick="event.stopPropagation();" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;font-weight:500;color:${isLive ? 'var(--green)' : 'var(--text3)'};">
+              <input type="checkbox" ${isLive ? 'checked' : ''}
+                data-pid="${product.id}" data-sid="${section.id}"
+                onchange="setProductLive(this.dataset.pid, this.dataset.sid, this.checked)"
+                style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
+              Live &amp; Selling
+            </label>` : '';
 
           html += `<div class="product-row">
             <div class="product-header" onclick="toggleProduct('${pkey}')">
               <span class="product-name">${product.name}</span>
               <div class="product-right">
+                ${liveCheck}
                 ${pri ? `<span ${priStyle}>${PRIORITIES[pri].label}</span>` : ''}
                 <span class="badge ${badgeClass}">${badgeLabel}</span>
                 ${role === 'coy' ? `<button class="delete-btn" onclick="event.stopPropagation();deleteProduct('${product.id}')" title="Remove product">&#10005;</button>` : ''}
