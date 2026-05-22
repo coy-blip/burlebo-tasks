@@ -812,6 +812,30 @@ async function saveGroupAssets() {
 async function setGroupFlag(group, flag, val) {
   if (!groupAssets[group]) groupAssets[group] = {};
   groupAssets[group][flag] = val;
+
+  // Map flag -> which section + task to bulk check
+  const flagTaskMap = {
+    'upload_all_live':    { sectionId: 'upload',  taskIds: ['flat_file','amazon_inv','images','activate','blb_sync','aplus_connect'] },
+    'content_aplus_done': { sectionId: 'content', taskIds: ['aplus'] },
+    'content_pdp_done':   { sectionId: 'content', taskIds: ['pdp_images'] },
+  };
+
+  const mapping = flagTaskMap[flag];
+  if (mapping) {
+    const groupProducts = products.filter(p => getProductGroup(p.name) === group);
+    for (const p of groupProducts) {
+      if (!taskState[p.id]) taskState[p.id] = {};
+      if (!taskState[p.id][mapping.sectionId]) taskState[p.id][mapping.sectionId] = {};
+      for (const taskId of mapping.taskIds) {
+        // Only set if not already an override
+        if (!isOverride(p.id, mapping.sectionId, taskId)) {
+          taskState[p.id][mapping.sectionId][taskId] = val;
+        }
+      }
+    }
+    await saveState();
+  }
+
   await saveGroupAssets();
   render();
 }
