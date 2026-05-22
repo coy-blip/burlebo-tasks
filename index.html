@@ -436,15 +436,41 @@
     justify-content: space-between;
   }
   .product-group:first-child .group-label { border-top: none; }
+  .group-body {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
   .group-assets {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 8px 18px 10px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 18px;
     background: var(--surface2);
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
+    flex: 1;
+    border-right: 1px solid var(--border);
   }
+  .group-notes {
+    width: 220px;
+    flex-shrink: 0;
+    padding: 10px 14px;
+    background: var(--surface2);
+  }
+  .notes-input {
+    width: 100%;
+    min-height: 72px;
+    padding: 7px 9px;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    resize: vertical;
+    outline: none;
+    line-height: 1.5;
+  }
+  .notes-input:focus { border-color: var(--border2); }
   .group-asset-item {
     display: flex;
     align-items: center;
@@ -1037,19 +1063,39 @@ async function clearGroupDoc(group) {
   render();
 }
 
-async function saveDropboxLink(group, val) {
+async function saveDropboxLinkAt(group, idx, val) {
   const link = val.trim();
   if (!link) return;
   if (!groupAssets[group]) groupAssets[group] = {};
-  groupAssets[group].dropboxLink = link;
+  if (!groupAssets[group].dropboxLinks) groupAssets[group].dropboxLinks = [];
+  groupAssets[group].dropboxLinks[idx] = link;
   await saveGroupAssets();
   render();
 }
 
-async function clearDropboxLink(group) {
-  if (groupAssets[group]) delete groupAssets[group].dropboxLink;
+async function clearDropboxLinkAt(group, idx) {
+  if (!groupAssets[group]?.dropboxLinks) return;
+  groupAssets[group].dropboxLinks[idx] = '';
+  // Clean up trailing empty entries
+  while (groupAssets[group].dropboxLinks.length && !groupAssets[group].dropboxLinks[groupAssets[group].dropboxLinks.length - 1]) {
+    groupAssets[group].dropboxLinks.pop();
+  }
   await saveGroupAssets();
   render();
+}
+
+async function saveGroupNotes(group, val) {
+  if (!groupAssets[group]) groupAssets[group] = {};
+  groupAssets[group].notes = val;
+  await saveGroupAssets();
+}
+
+async function saveDropboxLink(group, val) {
+  await saveDropboxLinkAt(group, 0, val);
+}
+
+async function clearDropboxLink(group) {
+  await clearDropboxLinkAt(group, 0);
 }
 
 const PRIORITIES = { high: { label: 'High', color: '#9B1C1C', bg: '#FDF2F2' }, medium: { label: 'Medium', color: '#92400E', bg: '#FFFBEB' }, low: { label: 'Low', color: '#057A55', bg: '#F0FAF4' } };
@@ -1325,38 +1371,67 @@ function renderSections() {
                   style="padding:2px 8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;cursor:pointer;">Clear</button>` : ''}
               </div>` : '';
 
+            const dropboxLinks = groupData.dropboxLinks || (dropboxLink ? [dropboxLink] : []);
+            const notes = groupData.notes || '';
+
+            // Build dropbox links HTML
+            let dropboxHtml = '';
+            for (let di = 0; di < 3; di++) {
+              const lval = dropboxLinks[di] || '';
+              const dkey = `${groupKey}-db${di}`;
+              if (lval) {
+                dropboxHtml += `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
+                  <a class="asset-link" href="${lval}" target="_blank">🔗 Link ${di+1}</a>
+                  ${role === 'designer' ? `<button class="asset-clear" data-group="${group.replace(/"/g,'&quot;')}" data-idx="${di}" onclick="clearDropboxLinkAt(this.dataset.group,parseInt(this.dataset.idx))" title="Remove">✕</button>` : ''}
+                </div>`;
+              } else if (role === 'designer') {
+                dropboxHtml += `<input class="asset-input" id="${dkey}" type="url" placeholder="Paste Dropbox link ${di+1}..."
+                  data-group="${group.replace(/"/g,'&quot;')}" data-idx="${di}"
+                  onblur="saveDropboxLinkAt(this.dataset.group,parseInt(this.dataset.idx),this.value)"
+                  onkeydown="if(event.key==='Enter')saveDropboxLinkAt(this.dataset.group,parseInt(this.dataset.idx),this.value)"
+                  style="margin-bottom:3px;" />`;
+              }
+            }
+            if (!dropboxHtml && role !== 'designer') {
+              dropboxHtml = `<span style="font-size:12px;color:var(--text3);">No Dropbox links yet</span>`;
+            }
+
             html += `<div class="product-group">
               <div class="group-label">
                 <span>${group}</span>
                 ${groupPriHtml}
               </div>
               ${groupChecks ? `<div style="display:flex;align-items:center;gap:20px;padding:8px 18px;background:var(--surface);border-bottom:1px solid var(--border);">${groupChecks}</div>` : ''}
-              <div class="group-assets">
-                <div class="group-asset-item">
-                  <span class="asset-label">📄 Copywriting Doc</span>
-                  <div class="asset-value">
-                    ${docFile && docUrl
-                      ? `<a class="asset-link" href="${docUrl}" target="_blank" title="${docFile}">📎 ${docFile}</a>
-                         ${role === 'coy' ? `<button class="asset-clear" onclick="clearGroupDoc('${group}')" title="Remove">✕</button>` : ''}`
-                      : role === 'coy'
-                        ? `<span id="doc-status-${groupKey}" class="asset-uploading" style="display:none;">Uploading...</span>
-                           <input type="file" id="doc-input-${groupKey}" data-group="${group.replace(/"/g,'&quot;')}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc(this.dataset.group, this)" />
-                           <button class="asset-btn" onclick="document.getElementById('doc-input-${groupKey}').click()">+ Upload copywriting doc</button>`
-                        : `<span style="font-size:12px;color:var(--text3);">No copywriting doc yet</span>`
-                    }
+              <div class="group-body">
+                <div class="group-assets">
+                  <div class="group-asset-item">
+                    <span class="asset-label">📄 Copywriting Doc</span>
+                    <div class="asset-value">
+                      ${docFile && docUrl
+                        ? `<a class="asset-link" href="${docUrl}" target="_blank" title="${docFile}">📎 ${docFile}</a>
+                           ${role === 'coy' ? `<button class="asset-clear" data-group="${group.replace(/"/g,'&quot;')}" onclick="clearGroupDoc(this.dataset.group)" title="Remove">✕</button>` : ''}`
+                        : role === 'coy'
+                          ? `<span id="doc-status-${groupKey}" class="asset-uploading" style="display:none;">Uploading...</span>
+                             <input type="file" id="doc-input-${groupKey}" data-group="${group.replace(/"/g,'&quot;')}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc(this.dataset.group, this)" />
+                             <button class="asset-btn" onclick="document.getElementById('doc-input-${groupKey}').click()">+ Upload copywriting doc</button>`
+                          : `<span style="font-size:12px;color:var(--text3);">No copywriting doc yet</span>`
+                      }
+                    </div>
+                  </div>
+                  <div class="group-asset-item">
+                    <span class="asset-label">📦 Dropbox</span>
+                    <div class="asset-value" style="flex-direction:column;align-items:flex-start;">
+                      ${dropboxHtml}
+                    </div>
                   </div>
                 </div>
-                <div class="group-asset-item">
-                  <span class="asset-label">📦 Dropbox</span>
-                  <div class="asset-value">
-                    ${dropboxLink
-                      ? `<a class="asset-link" href="${dropboxLink}" target="_blank" title="${dropboxLink}">🔗 View files</a>
-                         ${role === 'designer' ? `<button class="asset-clear" onclick="clearDropboxLink('${group}')" title="Remove">✕</button>` : ''}`
-                      : role === 'designer'
-                        ? `<input class="asset-input" id="dropbox-input-${groupKey}" type="url" placeholder="Paste Dropbox link..." onblur="saveDropboxLink('${group}', this.value)" onkeydown="if(event.key==='Enter')saveDropboxLink('${group}',this.value)" />`
-                        : `<span style="font-size:12px;color:var(--text3);">No Dropbox link yet</span>`
-                    }
-                  </div>
+                <div class="group-notes">
+                  <div class="asset-label" style="margin-bottom:6px;">📝 Notes</div>
+                  <textarea class="notes-input"
+                    data-group="${group.replace(/"/g,'&quot;')}"
+                    placeholder="Add notes for this product group..."
+                    onblur="saveGroupNotes(this.dataset.group, this.value)"
+                    >${notes}</textarea>
                 </div>
               </div>`;
             lastGroup = group;
