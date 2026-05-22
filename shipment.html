@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FBA Shipment — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8; --purple: #a78bfa;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--panel); }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+  main.hidden { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 24px 0; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; }
+  .ctrl-label { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+  .btn { padding: 7px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.92; }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+  .btn.ghost:hover { color: var(--text); }
+
+  /* 3-card KPI strip */
+  .kpi-row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 700px) { .kpi-row-3 { grid-template-columns: 1fr; } }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; position: relative; overflow: hidden; }
+  .kpi::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .kpi.orange::before { background: var(--accent); }
+  .kpi.red::before { background: var(--red); }
+  .kpi.blue::before { background: var(--blue); }
+  .kpi-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .kpi-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+
+  .section-hdr { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 12px; gap: 12px; flex-wrap: wrap; }
+  .section-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+  .section-sub { font-size: 12px; color: var(--text-dim); }
+
+  .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: var(--panel-2); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+  td.r, th.r { text-align: right; }
+  td.mono { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  td input.units-input { width: 70px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: 'SF Mono', Menlo, monospace; font-size: 13px; padding: 4px 6px; border-radius: var(--radius-sm); text-align: right; outline: none; }
+  td input.units-input:focus { border-color: var(--accent); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge.green  { background: rgba(74, 222, 128, 0.15);  color: var(--green); }
+  .badge.orange { background: rgba(255, 107, 53, 0.15);  color: var(--accent); }
+  .badge.red    { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+  .badge.blue   { background: rgba(56, 189, 248, 0.15);  color: var(--blue); }
+  .badge.muted  { background: var(--panel-2);            color: var(--text-dim); }
+
+  .row-del { background: none; border: none; color: var(--red); cursor: pointer; font-size: 14px; padding: 2px 6px; }
+  .row-del:hover { color: #ffabab; }
+
+  .empty { text-align: center; padding: 80px 20px; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; }
+  .empty-title { font-size: 15px; margin-bottom: 4px; color: var(--text); }
+  .empty-sub { font-size: 13px; }
+  .loading { color: var(--text-dim); font-size: 14px; padding: 40px 0; text-align: center; }
+
+  /* Role modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 13px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input { width: 100%; padding: 11px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; margin-bottom: 8px; }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Role modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
+      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
+      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
+      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
+    </div>
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
+        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav">
+    <!-- Filled in from /nav.html -->
+    <span class="role-pill" id="role-pill" onclick="logout()"></span>
+  </nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">FBA Shipment</div>
+  <div class="page-sub">What to send to Amazon based on velocity, current FBA stock, and HQ availability</div>
+
+  <div class="controls">
+    <button class="btn primary" onclick="loadShipment()">🔄 Build Shipment</button>
+    <span class="ctrl-label" id="ship-run-date"></span>
+  </div>
+
+  <div id="shipment-content">
+    <div class="empty"><div class="empty-icon">🚚</div><div class="empty-title">Click Build Shipment to generate</div></div>
+  </div>
+</main>
+
+<script>
+  // ============================================================================
+  // Shared nav loader — pulls /nav.html and injects + highlights active link
+  // ============================================================================
+  async function loadSharedNav() {
+    try {
+      const r = await fetch('/nav.html', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const html = await r.text();
+      const nav = document.getElementById('main-nav');
+      const pill = document.getElementById('role-pill');
+      // Insert nav links before the role pill
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const here = window.location.pathname.replace(/\/$/, '') || '/';
+      for (const a of tmp.querySelectorAll('a')) {
+        const href = a.getAttribute('href');
+        if (href === here || (href === '/' && here === '/')) a.classList.add('active');
+        nav.insertBefore(a, pill);
+      }
+    } catch (err) {
+      console.error('Nav load failed:', err);
+    }
+  }
+
+  // ============================================================================
+  // Supabase + auth
+  // ============================================================================
+  const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+  let role = null;
+  let pendingRole = null;
+
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+  function checkPw() {
+    if (!pendingRole) return;
+    if (document.getElementById('pw-input').value === ROLES[pendingRole].password) enterApp(pendingRole);
+    else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+    loadSharedNav();
+    loadShipment();
+  }
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
+
+  // ============================================================================
+  // Helpers
+  // ============================================================================
+  function toISO(d) { return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0'); }
+  function parseISO(s) {
+    if (!s) return null;
+    const parts = String(s).slice(0,10).split('-').map(n => parseInt(n,10));
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    return new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
+  }
+  function daysBetween(a, b) { return Math.round((b.getTime() - a.getTime()) / 86400000); }
+  function fmtN(n) { if (n==null) return '—'; return Math.round(n).toLocaleString(); }
+  function formatLongDate(iso) {
+    const d = parseISO(iso);
+    if (!d) return iso;
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  }
+
+  // ============================================================================
+  // Shipment calculator — port of fba_shipment.py
+  // ============================================================================
+  const DOS_THRESHOLD = 45;
+  const STYLE_COMPANION_THRESHOLD = 55;
+  const TARGET_DAYS = 90;
+  const ZERO_INV_DEFAULT = 10;
+  const BLB_FULL_CAP_PCT = 0.90;
+  const BLB_PARTIAL_PCT = 0.80;
+  const OOS_THRESHOLD = 10;
+  const ECOM_POST_SHIPMENT_TARGET_PCT = 0.40;
+
+  function stripFba(sku) {
+    const s = String(sku || '').toUpperCase().trim();
+    if (s.startsWith('FBA2-')) return s.slice(5);
+    if (s.startsWith('FBA-'))  return s.slice(4);
+    return s;
+  }
+  function isOneSize(sku) {
+    const s = stripFba(sku);
+    return ['C-', 'BP-', 'DB-'].some(p => s.startsWith(p));
+  }
+  function getStyleKey(sku) {
+    const clean = stripFba(sku);
+    if (['C-', 'DB-', 'BP-'].some(p => clean.startsWith(p))) return clean;
+    const parts = clean.split('-');
+    if (parts.length <= 1) return clean;
+    parts.pop();
+    return parts.join('-');
+  }
+  function calcVelocity(u7, u30, daysInFba) {
+    if (daysInFba && daysInFba >= 30) {
+      const daily30 = u30 > 0 ? u30 / 30 : 0;
+      const daily7  = u7  > 0 ? u7  / 7  : 0;
+      if (daily30 <= 0) return 0;
+      let vel = daily30;
+      const adj7 = Math.min(daily7, daily30 * 1.5);
+      if (adj7 >= daily30 * 1.25) vel = daily30 * 0.65 + adj7 * 0.35;
+      return vel;
+    }
+    return u7 > 0 ? u7 / 7 : 0;
+  }
+  function calcRecommended(inv, dailyVel) {
+    if (dailyVel === 0) return inv === 0 ? ZERO_INV_DEFAULT : 0;
+    const target = Math.floor(dailyVel * TARGET_DAYS + 0.999);
+    return Math.max(0, target - inv);
+  }
+  function calcShipmentQty(recommended, totalAvail) {
+    if (totalAvail < OOS_THRESHOLD) return 0;
+    if (totalAvail >= recommended) {
+      const capped = Math.floor(totalAvail * BLB_FULL_CAP_PCT);
+      return Math.min(recommended, capped);
+    }
+    return Math.floor(totalAvail * BLB_PARTIAL_PCT);
+  }
+  function calcTransfer(ecom, wholesale, unitsToShip) {
+    if (ecom >= unitsToShip) return 0;
+    if (unitsToShip <= 0) return 0;
+    const totalBefore = ecom + wholesale;
+    const remaining = totalBefore - unitsToShip;
+    if (remaining <= 0) return Math.min(wholesale, Math.max(0, unitsToShip - ecom));
+    const targetEcomAfter = Math.round(remaining * ECOM_POST_SHIPMENT_TARGET_PCT);
+    const targetEcomBefore = targetEcomAfter + unitsToShip;
+    let transfer = Math.max(0, targetEcomBefore - ecom);
+    transfer = Math.max(transfer, unitsToShip - ecom);
+    transfer = Math.min(transfer, wholesale);
+    return transfer;
+  }
+
+  function buildShipment(fbaRows, blbInventoryByShopifySku, salesWindow, latestSalesISO) {
+    const latestDate = latestSalesISO ? parseISO(latestSalesISO) : null;
+
+    // Build per-SKU sales maps (only FBA-tagged sales count for shipment logic)
+    const skuDateMap = new Map();
+    const skuFirstDate = new Map();
+    for (const r of salesWindow) {
+      if (!r.is_fba) continue;
+      const sku = String(r.sku || '').toUpperCase();
+      if (!sku) continue;
+      const dateStr = (r.date instanceof Date) ? toISO(r.date) : String(r.date).slice(0, 10);
+      const d = parseISO(dateStr);
+      if (!d) continue;
+      if (!skuDateMap.has(sku)) skuDateMap.set(sku, new Map());
+      const dm = skuDateMap.get(sku);
+      dm.set(dateStr, (dm.get(dateStr) || 0) + (r.units || 0));
+      const existing = skuFirstDate.get(sku);
+      if (!existing || d < existing) skuFirstDate.set(sku, d);
+    }
+
+    function getShipped(sku, days) {
+      if (!latestDate) return 0;
+      const dm = skuDateMap.get(sku);
+      if (!dm) return 0;
+      let total = 0;
+      for (const [dateStr, units] of dm.entries()) {
+        const d = parseISO(dateStr);
+        if (!d) continue;
+        if (daysBetween(d, latestDate) < days) total += units;
+      }
+      return total;
+    }
+    function getDaysInFba(sku) {
+      const first = skuFirstDate.get(sku);
+      if (!first || !latestDate) return null;
+      return daysBetween(first, latestDate) + 1;
+    }
+
+    // Filter FBA inventory rows
+    const invMap = new Map();
+    for (const row of fbaRows) {
+      const raw = String(row.raw_sku || '').toUpperCase();
+      if (!(raw.startsWith('FBA-') || raw.startsWith('FBA2-'))) continue;
+      invMap.set(String(row.sku || '').toUpperCase(), row);
+    }
+
+    // Pass 1: triggers
+    const skuRows = [];
+    const triggerStyles = new Set();
+    for (const [sku, invRow] of invMap.entries()) {
+      const shopifySku = stripFba(sku);
+      const inv = invRow.fulfillable || 0;
+      const inbound = (invRow.inbound_working || 0) + (invRow.inbound_shipped || 0) + (invRow.inbound_receiving || 0);
+      const effective = inv + inbound;
+      const u7 = getShipped(sku, 7);
+      const u30 = getShipped(sku, 30);
+      const daysInFba = getDaysInFba(sku);
+      const dailyVel = calcVelocity(u7, u30, daysInFba);
+      let daysSupply;
+      if (effective === 0) daysSupply = 0;
+      else if (dailyVel > 0) daysSupply = effective / dailyVel;
+      else daysSupply = null;
+      const styleKey = getStyleKey(sku);
+
+      let isTrigger = false;
+      if (effective === 0) { isTrigger = true; triggerStyles.add(styleKey); }
+      else if (dailyVel > 0 && daysSupply !== null && daysSupply < DOS_THRESHOLD) { isTrigger = true; triggerStyles.add(styleKey); }
+
+      skuRows.push({ amazon_sku: sku, shopify_sku: shopifySku, style_key: styleKey,
+        inv, inbound, effective_inv: effective, u7, u30, daily_vel: dailyVel,
+        days_supply: daysSupply, is_trigger: isTrigger });
+    }
+
+    // Pass 2: build
+    const main = [], oos = [];
+    let totalUnits = 0;
+    for (const rec of skuRows) {
+      let include = rec.is_trigger;
+      if (!include && triggerStyles.has(rec.style_key)) {
+        if (rec.daily_vel > 0 && rec.days_supply !== null && rec.days_supply < STYLE_COMPANION_THRESHOLD) {
+          include = true;
+        }
+      }
+      if (!include) continue;
+
+      const recommended = calcRecommended(rec.effective_inv, rec.daily_vel);
+      if (recommended <= 0) continue;
+
+      const blb = blbInventoryByShopifySku.get(rec.shopify_sku.toUpperCase()) || { ecommerce: 0, wholesale: 0 };
+      const ecom = blb.ecommerce || 0;
+      const wholesale = blb.wholesale || 0;
+      const totalAvail = ecom + wholesale;
+
+      if (totalAvail < OOS_THRESHOLD) {
+        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
+        continue;
+      }
+
+      const unitsToShip = calcShipmentQty(recommended, totalAvail);
+      const blbCanCover = totalAvail >= recommended;
+
+      if (unitsToShip <= 0) {
+        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
+        continue;
+      }
+      if (unitsToShip < 7 && !blbCanCover) {
+        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
+        continue;
+      }
+
+      const isPartial = unitsToShip < recommended;
+      const transfer = calcTransfer(ecom, wholesale, unitsToShip);
+      let status;
+      if (transfer > 0) status = isPartial ? 'Partial Shipment - Needs Transfer' : 'Needs Transfer';
+      else status = isPartial ? 'Partial Shipment - Good To Go' : 'Good To Go';
+
+      main.push({
+        amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku,
+        units_to_ship: unitsToShip, status,
+        transfer_amount: transfer > 0 ? transfer : null,
+        recommended,
+        current_inv: rec.inv, inbound: rec.inbound, effective_inv: rec.effective_inv,
+        days_supply: rec.days_supply !== null ? Math.round(rec.days_supply * 10) / 10 : 0,
+        daily_vel: Math.round(rec.daily_vel * 1000) / 1000,
+      });
+      totalUnits += unitsToShip;
+    }
+
+    main.sort((a, b) => a.shopify_sku.localeCompare(b.shopify_sku));
+    oos.sort((a, b) => a.shopify_sku.localeCompare(b.shopify_sku));
+
+    return { main, oos, total_units: totalUnits, run_date: latestSalesISO };
+  }
+
+  // ============================================================================
+  // Data load
+  // ============================================================================
+  async function fetchPaged(table, columns, filters = []) {
+    const all = [];
+    let from = 0;
+    const page = 1000;
+    while (true) {
+      let q = sb.from(table).select(columns);
+      for (const [k, op, v] of filters) q = q[op](k, v);
+      q = q.range(from, from + page - 1);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < page) break;
+      from += page;
+    }
+    return all;
+  }
+
+  async function loadShipment() {
+    document.getElementById('shipment-content').innerHTML = '<div class="loading">Loading inventory + sales + HQ stock…</div>';
+
+    try {
+      // Latest sales date
+      const { data: latestSales } = await sb.from('sales_daily').select('date').order('date', { ascending: false }).limit(1);
+      const latestSalesDate = (latestSales && latestSales[0])
+        ? ((latestSales[0].date instanceof Date) ? toISO(latestSales[0].date) : String(latestSales[0].date).slice(0,10))
+        : null;
+
+      // 90 days of FBA sales
+      let salesWindow = [];
+      if (latestSalesDate) {
+        const startDate = parseISO(latestSalesDate);
+        startDate.setUTCDate(startDate.getUTCDate() - 89);
+        salesWindow = await fetchPaged('sales_daily', 'date, sku, units, is_fba',
+          [['date', 'gte', toISO(startDate)], ['date', 'lte', latestSalesDate]]);
+      }
+
+      // FBA inventory
+      const fba = await fetchPaged('fba_inventory_snapshot',
+        'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving');
+
+      // BLB inventory — only HQ + eCommerce/Wholesale channels
+      const blb = await fetchPaged('blb_inventory_snapshot',
+        'sku, channel, location, on_hand_avail',
+        [['location', 'eq', 'HQ']]);
+
+      // Build BLB index: shopifySku (upper) -> { ecommerce, wholesale }
+      const blbIndex = new Map();
+      for (const r of blb) {
+        const ch = String(r.channel || '').toLowerCase();
+        if (ch !== 'ecommerce' && ch !== 'wholesale') continue;
+        const sku = String(r.sku || '').toUpperCase();
+        if (!sku) continue;
+        const entry = blbIndex.get(sku) || { ecommerce: 0, wholesale: 0 };
+        if (ch === 'ecommerce') entry.ecommerce += (r.on_hand_avail || 0);
+        else entry.wholesale += (r.on_hand_avail || 0);
+        blbIndex.set(sku, entry);
+      }
+
+      const result = buildShipment(fba, blbIndex, salesWindow, latestSalesDate);
+      window._shipData = result;
+      window._shipRows = result.main.map(r => ({ ...r }));
+      renderShipment();
+    } catch (err) {
+      document.getElementById('shipment-content').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Error</div><div class="empty-sub">${err.message}</div></div>`;
+    }
+  }
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+  function statusBadge(status) {
+    if (status === 'Good To Go') return `<span class="badge green">${status}</span>`;
+    if (status.includes('Needs Transfer')) return `<span class="badge orange">${status}</span>`;
+    if (status.includes('Partial')) return `<span class="badge blue">${status}</span>`;
+    return `<span class="badge muted">${status}</span>`;
+  }
+
+  function renderShipment() {
+    const d = window._shipData;
+    const rows = window._shipRows;
+    if (!d) return;
+
+    document.getElementById('ship-run-date').textContent = d.run_date ? `Based on sales through: ${formatLongDate(d.run_date)}` : '';
+
+    if (!rows || rows.length === 0) {
+      document.getElementById('shipment-content').innerHTML = `
+        <div class="empty"><div class="empty-icon">🚚</div><div class="empty-title">No shipment needed</div><div class="empty-sub">All FBA SKUs have sufficient stock, or no triggers fired.</div></div>
+        ${d.oos && d.oos.length > 0 ? renderOos(d.oos) : ''}
+      `;
+      return;
+    }
+
+    const totalUnits = rows.reduce((s, r) => s + (parseInt(r.units_to_ship) || 0), 0);
+    const skuCount = rows.length;
+
+    let html = '<div class="kpi-row-3">';
+    html += `<div class="kpi orange"><div class="kpi-label">Total Units to Ship</div><div class="kpi-value" id="ship-total-kpi">${fmtN(totalUnits)}</div></div>`;
+    html += `<div class="kpi red"><div class="kpi-label">SKUs Out of Stock at HQ</div><div class="kpi-value">${fmtN(d.oos?.length || 0)}</div></div>`;
+    html += `<div class="kpi blue"><div class="kpi-label">SKUs in Shipment</div><div class="kpi-value" id="ship-sku-kpi">${fmtN(skuCount)}</div></div>`;
+    html += '</div>';
+
+    html += `<div class="section-hdr">
+      <div class="section-title">Shipment List</div>
+      <button class="btn primary" onclick="exportShipment()">⬇️ Export CSV</button>
+    </div>`;
+
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th style="width:36px;"></th>';
+    html += '<th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units to Ship</th>';
+    html += '<th>Status</th><th class="r">Transfer</th>';
+    html += '<th class="r">FBA Stock</th><th class="r">Inbound</th><th class="r">Effective</th>';
+    html += '<th class="r">Days Supply</th><th class="r">Recommended</th>';
+    html += '</tr></thead><tbody id="ship-tbody">';
+
+    rows.forEach((r, i) => {
+      html += `<tr id="ship-row-${i}">
+        <td><button class="row-del" onclick="deleteShipRow(${i})" title="Remove from shipment">✕</button></td>
+        <td class="mono">FBA-${r.shopify_sku}</td>
+        <td class="mono">${r.shopify_sku}</td>
+        <td class="r"><input type="number" class="units-input" min="0" value="${r.units_to_ship}" onchange="updateUnits(${i}, this.value)" /></td>
+        <td>${statusBadge(r.status)}</td>
+        <td class="r">${r.transfer_amount ? fmtN(r.transfer_amount) : '—'}</td>
+        <td class="r">${fmtN(r.current_inv)}</td>
+        <td class="r" style="color: var(--blue);">${fmtN(r.inbound)}</td>
+        <td class="r">${fmtN(r.effective_inv)}</td>
+        <td class="r">${r.days_supply ? r.days_supply.toFixed(1) + 'd' : '0d'}</td>
+        <td class="r" style="color: var(--text-dim);">${fmtN(r.recommended)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+
+    if (d.oos && d.oos.length > 0) html += renderOos(d.oos);
+
+    document.getElementById('shipment-content').innerHTML = html;
+  }
+
+  function renderOos(oos) {
+    let html = `<div class="section-hdr"><div class="section-title" style="color: var(--red);">⚠️ OOS at HQ — Cannot Ship</div><div class="section-sub">${oos.length} SKU${oos.length===1?'':'s'} need restocking at HQ before they can be sent to FBA</div></div>`;
+    html += '<div class="table-wrap"><table><thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units Needed</th></tr></thead><tbody>';
+    for (const r of oos) {
+      html += `<tr><td class="mono" style="color: var(--red);">FBA-${r.shopify_sku}</td><td class="mono">${r.shopify_sku}</td><td class="r">${fmtN(r.units_needed)}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+    return html;
+  }
+
+  function deleteShipRow(i) {
+    if (!confirm('Remove this SKU from the shipment?')) return;
+    window._shipRows.splice(i, 1);
+    renderShipment();
+  }
+
+  function updateUnits(i, val) {
+    const n = parseInt(val) || 0;
+    window._shipRows[i].units_to_ship = n;
+    // Update total KPI without full re-render
+    const total = window._shipRows.reduce((s, r) => s + (parseInt(r.units_to_ship) || 0), 0);
+    const el = document.getElementById('ship-total-kpi');
+    if (el) el.textContent = fmtN(total);
+  }
+
+  function exportShipment() {
+    const rows = window._shipRows;
+    if (!rows || rows.length === 0) return;
+    const csv = ['Amazon SKU,Shopify SKU,Units to Ship,Status,Transfer'];
+    for (const r of rows) {
+      csv.push([
+        'FBA-' + r.shopify_sku, r.shopify_sku, r.units_to_ship,
+        '"' + r.status + '"', r.transfer_amount || ''
+      ].join(','));
+    }
+    const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `fba-shipment-${window._shipData.run_date || 'export'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+</script>
+
+</body>
+</html>
