@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>To-Do — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8; --purple: #a78bfa; --gold: #fbbf24; --teal: #2dd4bf;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--panel); }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 32px; }
+  main.hidden { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 24px 0; }
+
+  /* Stats row */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 700px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .stat-val { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .stat-lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+
+  /* Input form */
+  .add-form {
+    display: flex; gap: 10px; align-items: stretch;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px; margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .add-form input[type=text] {
+    flex: 1; min-width: 240px;
+    padding: 9px 12px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 14px; outline: none;
+  }
+  .add-form input[type=text]:focus { border-color: var(--accent); }
+  .add-form select {
+    padding: 9px 12px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+  .btn { padding: 9px 18px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .btn.primary:hover { opacity: 0.92; }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+
+  /* Two-column layout: sidebar + list */
+  .todo-layout { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+  @media (max-width: 800px) { .todo-layout { grid-template-columns: 1fr; } }
+
+  .sidebar { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+  .cat-btn {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 8px 10px;
+    background: transparent; border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text); font-family: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer; text-align: left;
+    margin-bottom: 4px;
+  }
+  .cat-btn:hover { background: var(--panel-2); }
+  .cat-btn.active { background: var(--panel-2); border-color: var(--border); color: var(--text); }
+  .cat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .cat-label { flex: 1; }
+  .cat-count { background: var(--bg); color: var(--text-dim); padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+
+  .clear-btn { display: block; width: 100%; margin-top: 8px; }
+
+  /* List */
+  .list-area { min-height: 200px; }
+  .todo-item {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex; align-items: flex-start; gap: 12px;
+    transition: opacity 0.15s;
+  }
+  .todo-item.done { opacity: 0.45; }
+  .todo-item.done .todo-title { text-decoration: line-through; }
+  .todo-check {
+    width: 20px; height: 20px; border-radius: 4px;
+    border: 2px solid var(--border); background: transparent;
+    cursor: pointer; flex-shrink: 0; margin-top: 2px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.12s;
+  }
+  .todo-check:hover { border-color: var(--accent); }
+  .todo-check.checked { background: var(--green); border-color: var(--green); }
+  .todo-check.checked::after { content: '✓'; color: var(--bg); font-weight: 800; font-size: 12px; }
+  .todo-body { flex: 1; min-width: 0; }
+  .todo-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; word-wrap: break-word; }
+  .todo-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .todo-cat-pill, .todo-pri-pill {
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .todo-cat-pill.General   { background: var(--panel-2);             color: var(--text-dim); }
+  .todo-cat-pill.Inventory { background: rgba(56, 189, 248, 0.15);  color: var(--blue); }
+  .todo-cat-pill.Ads       { background: rgba(255, 107, 53, 0.15);  color: var(--accent); }
+  .todo-cat-pill.Listings  { background: rgba(167, 139, 250, 0.15); color: var(--purple); }
+  .todo-cat-pill.Shipping  { background: rgba(45, 212, 191, 0.15);  color: var(--teal); }
+  .todo-cat-pill.Finance   { background: rgba(74, 222, 128, 0.15);  color: var(--green); }
+  .todo-cat-pill.Agency    { background: rgba(251, 191, 36, 0.15);  color: var(--gold); }
+  .todo-pri-pill.High      { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+  .todo-pri-pill.Normal    { background: var(--panel-2);             color: var(--text-dim); }
+  .todo-pri-pill.Low       { background: rgba(56, 189, 248, 0.15);  color: var(--blue); }
+  .todo-note { font-size: 12px; color: var(--text-dim); margin-top: 6px; cursor: pointer; min-height: 16px; }
+  .todo-note:hover { color: var(--text); }
+  .todo-note .placeholder { font-style: italic; }
+  .todo-note input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: inherit; font-size: 12px; padding: 4px 8px; border-radius: var(--radius-sm); outline: none; }
+  .todo-note input:focus { border-color: var(--accent); }
+  .todo-actions { display: flex; gap: 6px; align-items: center; }
+  .todo-del { background: none; border: none; color: var(--red); cursor: pointer; padding: 2px 6px; font-size: 14px; }
+  .todo-del:hover { color: #ffabab; }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; }
+  .empty-title { font-size: 15px; margin-bottom: 4px; color: var(--text); }
+  .empty-sub { font-size: 13px; }
+
+  /* Role modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
+  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
+  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
+  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .modal-option { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 13px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
+  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .modal-option .dot.coy { background: var(--coy); }
+  .modal-option .dot.designer { background: var(--designer); }
+  .modal-option .dot.admin { background: var(--admin); }
+  .modal-option .dot.employee { background: var(--employee); }
+  .pw-field { display: none; margin-top: 8px; }
+  .pw-field input { width: 100%; padding: 11px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; margin-bottom: 8px; }
+  .pw-field input:focus { border-color: var(--accent); }
+  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
+  .pw-row { display: flex; gap: 8px; }
+
+  .locked {
+    text-align: center; padding: 80px 20px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .locked .lock-icon { font-size: 48px; margin-bottom: 12px; }
+  .locked h2 { font-size: 18px; font-weight: 600; margin: 0 0 6px 0; }
+  .locked p { font-size: 14px; color: var(--text-dim); margin: 0; max-width: 420px; margin: 0 auto; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- Role modal -->
+<div class="modal-overlay" id="role-modal">
+  <div class="modal-card">
+    <div class="modal-title">Burlebo Analytics</div>
+    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
+    <div class="modal-options" id="role-options">
+      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
+      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
+      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
+      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
+    </div>
+    <div class="pw-field" id="pw-field">
+      <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
+      <div class="pw-error" id="pw-error">Incorrect password.</div>
+      <div class="pw-row">
+        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
+        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav">
+    <span class="role-pill" id="role-pill" onclick="logout()"></span>
+  </nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">To-Do</div>
+  <div class="page-sub" id="todo-sub">Personal task list — stored in your browser only</div>
+
+  <!-- Locked view (non-Coy) -->
+  <div id="locked-view" style="display:none;">
+    <div class="locked">
+      <div class="lock-icon">🔒</div>
+      <h2>Coy-only page</h2>
+      <p>This is a personal to-do list for Coy. Switch role using the pill in the top-right corner.</p>
+    </div>
+  </div>
+
+  <!-- Coy view -->
+  <div id="todo-view" style="display:none;">
+    <div class="stats-row" id="todo-stats"></div>
+
+    <div class="add-form">
+      <input type="text" id="todo-input" placeholder="Add a task..." onkeydown="if(event.key==='Enter')addTodo()" />
+      <select id="todo-cat-select">
+        <option value="General">📋 General</option>
+        <option value="Inventory">📦 Inventory</option>
+        <option value="Ads">📣 Ads</option>
+        <option value="Listings">🛍️ Listings</option>
+        <option value="Shipping">🚚 Shipping</option>
+        <option value="Finance">💰 Finance</option>
+        <option value="Agency">💼 Agency</option>
+      </select>
+      <select id="todo-priority-select">
+        <option value="Normal">Normal</option>
+        <option value="High">High</option>
+        <option value="Low">Low</option>
+      </select>
+      <button class="btn primary" onclick="addTodo()">+ Add</button>
+    </div>
+
+    <div class="todo-layout">
+      <aside class="sidebar" id="todo-sidebar"></aside>
+      <div class="list-area" id="todo-list"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ============================================================================
+  // Shared nav loader
+  // ============================================================================
+  async function loadSharedNav() {
+    try {
+      const r = await fetch('/nav.html', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const html = await r.text();
+      const nav = document.getElementById('main-nav');
+      const pill = document.getElementById('role-pill');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const here = window.location.pathname.replace(/\/$/, '') || '/';
+      for (const a of tmp.querySelectorAll('a')) {
+        const href = a.getAttribute('href');
+        if (href === here || (href === '/' && here === '/')) a.classList.add('active');
+        nav.insertBefore(a, pill);
+      }
+    } catch (err) { console.error('Nav load failed:', err); }
+  }
+
+  // ============================================================================
+  // Role auth
+  // ============================================================================
+  const ROLES = {
+    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
+    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
+    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
+    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+  };
+  let role = null;
+  let pendingRole = null;
+
+  function pickRole(r) {
+    pendingRole = r;
+    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
+    document.getElementById('role-options').style.display = 'none';
+    document.getElementById('pw-field').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('pw-input').focus();
+  }
+  function cancelPw() {
+    pendingRole = null;
+    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
+    document.getElementById('role-options').style.display = 'flex';
+    document.getElementById('pw-field').style.display = 'none';
+  }
+  function checkPw() {
+    if (!pendingRole) return;
+    if (document.getElementById('pw-input').value === ROLES[pendingRole].password) enterApp(pendingRole);
+    else {
+      document.getElementById('pw-error').style.display = 'block';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  function enterApp(r) {
+    role = r;
+    document.getElementById('role-modal').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('app-main').classList.remove('hidden');
+    const pill = document.getElementById('role-pill');
+    pill.className = 'role-pill ' + ROLES[r].cls;
+    pill.textContent = ROLES[r].name + ' ✕';
+    loadSharedNav();
+
+    // Coy-only gate
+    if (r === 'coy') {
+      document.getElementById('todo-view').style.display = 'block';
+      document.getElementById('locked-view').style.display = 'none';
+      document.getElementById('todo-sub').textContent = 'Personal task list — stored in your browser only';
+      renderAll();
+      document.getElementById('todo-input').focus();
+    } else {
+      document.getElementById('todo-view').style.display = 'none';
+      document.getElementById('locked-view').style.display = 'block';
+      document.getElementById('todo-sub').textContent = '';
+    }
+  }
+  function logout() {
+    role = null;
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('app-main').classList.add('hidden');
+    cancelPw();
+    document.getElementById('role-modal').style.display = 'flex';
+  }
+
+  // ============================================================================
+  // To-Do state — localStorage
+  // ============================================================================
+  const TODO_KEY = 'burlebo_todos';
+  const CATEGORIES = ['General', 'Inventory', 'Ads', 'Listings', 'Shipping', 'Finance', 'Agency'];
+  const CAT_ICONS = { General:'📋', Inventory:'📦', Ads:'📣', Listings:'🛍️', Shipping:'🚚', Finance:'💰', Agency:'💼' };
+  const CAT_COLORS = {
+    General: 'var(--text-dim)', Inventory: 'var(--blue)', Ads: 'var(--accent)',
+    Listings: 'var(--purple)', Shipping: 'var(--teal)', Finance: 'var(--green)', Agency: 'var(--gold)',
+  };
+  let _filter = 'All';
+
+  function getTodos() {
+    try { return JSON.parse(localStorage.getItem(TODO_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function saveTodos(todos) {
+    localStorage.setItem(TODO_KEY, JSON.stringify(todos));
+  }
+
+  function addTodo() {
+    const input = document.getElementById('todo-input');
+    const title = input.value.trim();
+    if (!title) { input.focus(); return; }
+    const cat = document.getElementById('todo-cat-select').value;
+    const priority = document.getElementById('todo-priority-select').value;
+    const todos = getTodos();
+    todos.unshift({
+      id: Date.now() + Math.random(),
+      title, cat, priority,
+      done: false, note: '',
+      created: new Date().toISOString(),
+    });
+    saveTodos(todos);
+    input.value = '';
+    renderAll();
+    input.focus();
+  }
+
+  function toggleTodo(id) {
+    const todos = getTodos();
+    const t = todos.find(t => t.id === id);
+    if (t) t.done = !t.done;
+    saveTodos(todos);
+    renderAll();
+  }
+
+  function deleteTodo(id) {
+    saveTodos(getTodos().filter(t => t.id !== id));
+    renderAll();
+  }
+
+  function editNote(id) {
+    const todos = getTodos();
+    const t = todos.find(t => t.id === id);
+    if (!t) return;
+    const noteEl = document.getElementById('note-' + id);
+    if (!noteEl) return;
+    const current = (t.note || '').replace(/"/g, '&quot;');
+    noteEl.innerHTML = `<input type="text" value="${current}" onblur="saveNote('${id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()" />`;
+    noteEl.querySelector('input').focus();
+  }
+  function saveNote(id, val) {
+    const todos = getTodos();
+    const t = todos.find(t => String(t.id) === String(id));
+    if (t) t.note = String(val || '').trim();
+    saveTodos(todos);
+    renderAll();
+  }
+
+  function clearDone() {
+    const done = getTodos().filter(t => t.done).length;
+    if (done === 0) return;
+    if (!confirm(`Remove ${done} completed task${done===1?'':'s'}?`)) return;
+    saveTodos(getTodos().filter(t => !t.done));
+    renderAll();
+  }
+
+  function setCatFilter(cat) {
+    _filter = cat;
+    renderAll();
+  }
+
+  // ============================================================================
+  // Render
+  // ============================================================================
+  function renderAll() {
+    renderStats();
+    renderSidebar();
+    renderList();
+  }
+
+  function renderStats() {
+    const todos = getTodos();
+    const open = todos.filter(t => !t.done).length;
+    const done = todos.filter(t => t.done).length;
+    const high = todos.filter(t => t.priority === 'High' && !t.done).length;
+    const pct = todos.length ? Math.round(done / todos.length * 100) : 0;
+    document.getElementById('todo-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-val" style="color: var(--accent);">${open}</div><div class="stat-lbl">Open</div></div>
+      <div class="stat-card"><div class="stat-val" style="color: var(--red);">${high}</div><div class="stat-lbl">High Priority</div></div>
+      <div class="stat-card"><div class="stat-val" style="color: var(--green);">${done}</div><div class="stat-lbl">Completed</div></div>
+      <div class="stat-card"><div class="stat-val">${pct}%</div><div class="stat-lbl">Done Rate</div></div>
+    `;
+  }
+
+  function renderSidebar() {
+    const todos = getTodos();
+    const cats = ['All', ...CATEGORIES];
+    let html = '';
+    for (const cat of cats) {
+      const count = cat === 'All'
+        ? todos.filter(t => !t.done).length
+        : todos.filter(t => t.cat === cat && !t.done).length;
+      const dotColor = cat === 'All' ? 'var(--text-dim)' : CAT_COLORS[cat];
+      const icon = cat === 'All' ? '📋' : CAT_ICONS[cat];
+      const isActive = _filter === cat ? 'active' : '';
+      html += `<button class="cat-btn ${isActive}" onclick="setCatFilter('${cat}')">
+        <span class="cat-dot" style="background:${dotColor}"></span>
+        <span class="cat-label">${icon} ${cat}</span>
+        ${count > 0 ? `<span class="cat-count">${count}</span>` : ''}
+      </button>`;
+    }
+    html += '<button class="btn ghost sm clear-btn" onclick="clearDone()">🗑️ Clear Completed</button>';
+    document.getElementById('todo-sidebar').innerHTML = html;
+  }
+
+  function renderList() {
+    const todos = getTodos();
+    const filtered = _filter === 'All' ? todos : todos.filter(t => t.cat === _filter);
+
+    if (filtered.length === 0) {
+      document.getElementById('todo-list').innerHTML = `
+        <div class="empty">
+          <div class="empty-icon">${_filter === 'All' ? '📋' : (CAT_ICONS[_filter] || '📋')}</div>
+          <div class="empty-title">${_filter === 'All' ? 'No tasks yet' : 'Nothing in ' + _filter}</div>
+          <div class="empty-sub">${_filter === 'All' ? 'Add your first task above.' : ''}</div>
+        </div>`;
+      return;
+    }
+
+    // Sort: open first (by priority High→Normal→Low), then done items
+    const priorityRank = { High: 0, Normal: 1, Low: 2 };
+    const sorted = [...filtered].sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      const pa = priorityRank[a.priority] ?? 1;
+      const pb = priorityRank[b.priority] ?? 1;
+      if (pa !== pb) return pa - pb;
+      return b.id - a.id; // newer first
+    });
+
+    let html = '';
+    for (const t of sorted) {
+      const checkCls = t.done ? 'checked' : '';
+      const itemCls = t.done ? 'done' : '';
+      const note = t.note || '';
+      const noteDisplay = note
+        ? escapeHtml(note)
+        : '<span class="placeholder">+ add note</span>';
+      html += `<div class="todo-item ${itemCls}">
+        <button class="todo-check ${checkCls}" onclick="toggleTodo(${t.id})" title="Toggle done"></button>
+        <div class="todo-body">
+          <div class="todo-title">${escapeHtml(t.title)}</div>
+          <div class="todo-meta">
+            <span class="todo-cat-pill ${t.cat}">${CAT_ICONS[t.cat] || ''} ${t.cat}</span>
+            <span class="todo-pri-pill ${t.priority}">${t.priority}</span>
+          </div>
+          <div class="todo-note" id="note-${t.id}" onclick="editNote(${t.id})">${noteDisplay}</div>
+        </div>
+        <div class="todo-actions">
+          <button class="todo-del" onclick="deleteTodo(${t.id})" title="Delete">✕</button>
+        </div>
+      </div>`;
+    }
+
+    document.getElementById('todo-list').innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+</script>
+
+</body>
+</html>
