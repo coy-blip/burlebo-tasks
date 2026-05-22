@@ -254,15 +254,7 @@
 
 <header id="app-header" style="display:none;">
   <h1>Burlebo Analytics</h1>
-  <nav>
-    <a href="/">Tracker</a>
-    <a href="/dashboard.html">Dashboard</a>
-    <a href="/upload.html" class="active">Upload</a>
-    <a href="/analytics.html">Analytics</a>
-    <a href="/ads.html">Ad Performance</a>
-    <a href="/profit.html">Profit</a>
-    <a href="/inventory.html">FBA Inventory</a>
-    <a href="/goal.html">Goal Tracker</a>
+  <nav id="main-nav">
     <span class="role-pill" id="role-pill" onclick="logout()" title="Click to switch role"></span>
   </nav>
 </header>
@@ -297,6 +289,29 @@
   // ============================================================================
   // Setup
   // ============================================================================
+  // ============================================================================
+  // Shared nav loader — pulls /nav.html and injects + highlights active link
+  // ============================================================================
+  async function loadSharedNav() {
+    try {
+      const r = await fetch('/nav.html', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const html = await r.text();
+      const nav = document.getElementById('main-nav');
+      const pill = document.getElementById('role-pill');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const here = window.location.pathname.replace(/\/$/, '') || '/';
+      for (const a of tmp.querySelectorAll('a')) {
+        const href = a.getAttribute('href');
+        if (href === here || (href === '/' && here === '/')) a.classList.add('active');
+        nav.insertBefore(a, pill);
+      }
+    } catch (err) {
+      console.error('Nav load failed:', err);
+    }
+  }
+
   const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -347,6 +362,7 @@
     const pill = document.getElementById('role-pill');
     pill.className = 'role-pill ' + ROLES[r].cls;
     pill.textContent = ROLES[r].name + ' ✕';
+    loadSharedNav();
 
     if (r === 'coy') {
       document.getElementById('upload-panel').style.display = 'block';
