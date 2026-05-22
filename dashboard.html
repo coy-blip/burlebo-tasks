@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Burlebo Analytics Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --panel: #14171c;
+    --panel-2: #1a1e25;
+    --border: #252a33;
+    --text: #e8eaed;
+    --text-dim: #8a92a0;
+    --accent: #ff6b35;
+    --green: #4ade80;
+    --red: #f87171;
+    --yellow: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  body { min-height: 100vh; }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--panel);
+  }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  header nav { display: flex; gap: 18px; }
+  header nav a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.15s;
+  }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  main { max-width: 1200px; margin: 0 auto; padding: 32px; }
+  h2 { font-size: 14px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 16px 0; }
+  .banner {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .banner .label { font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+  .banner .value { font-size: 18px; font-weight: 600; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .status-dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+  .status-dot.err { background: var(--red); box-shadow: 0 0 8px rgba(248, 113, 113, 0.5); }
+  .status-dot.pending { background: var(--yellow); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card .table-name {
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    word-break: break-all;
+  }
+  .card .count {
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .card .count.zero { color: var(--text-dim); }
+  .card .count.has { color: var(--text); }
+  .card .label-below { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .footer-note {
+    margin-top: 32px;
+    padding: 16px;
+    background: var(--panel-2);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+  .footer-note code {
+    background: var(--bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Burlebo Analytics</h1>
+  <nav>
+    <a href="/">Tracker</a>
+    <a href="/dashboard.html" class="active">Dashboard</a>
+  </nav>
+</header>
+
+<main>
+  <div class="banner" id="connection-banner">
+    <div>
+      <div class="label">Supabase connection</div>
+      <div class="value"><span class="status-dot pending" id="conn-dot"></span><span id="conn-status">Connecting...</span></div>
+    </div>
+    <div>
+      <div class="label">Last checked</div>
+      <div class="value" id="check-time">—</div>
+    </div>
+  </div>
+
+  <h2>Database tables</h2>
+  <div class="grid" id="tables-grid"></div>
+
+  <div class="footer-note">
+    <strong style="color: var(--text);">Phase 1 — Plumbing check.</strong><br>
+    This page proves the deploy pipeline + Supabase connection work. If every table shows a count (even 0), we're good.
+    Next phase: real authentication, then the CSV upload flow. After that, real dashboard pages.
+    <br><br>
+    Current URL: <code id="current-url"></code>
+  </div>
+</main>
+
+<script>
+  const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // The 9 dashboard tables we created in schema_v2.sql
+  const TABLES = [
+    { name: 'product_groups',         label: 'product groups' },
+    { name: 'product_group_prefixes', label: 'sku prefixes' },
+    { name: 'dashboard_config',       label: 'config rows' },
+    { name: 'creator_connections',    label: 'creator entries' },
+    { name: 'sales_daily',            label: 'sales rows' },
+    { name: 'ad_daily',               label: 'ad rows' },
+    { name: 'fba_inventory_snapshot', label: 'fba snapshots' },
+    { name: 'blb_inventory_snapshot', label: 'blb snapshots' },
+    { name: 'uploads',                label: 'upload events' },
+  ];
+
+  document.getElementById('current-url').textContent = window.location.href;
+
+  function setStatus(state, msg) {
+    const dot = document.getElementById('conn-dot');
+    const text = document.getElementById('conn-status');
+    dot.className = 'status-dot ' + state;
+    text.textContent = msg;
+  }
+
+  async function checkTable(t) {
+    // Note: Phase 1 uses anon key (no auth yet). RLS allows authenticated only,
+    // so unauthenticated count requests return 0 rows but no error.
+    // In Phase 2 we add login and you'll see real counts.
+    const { count, error } = await sb
+      .from(t.name)
+      .select('*', { count: 'exact', head: true });
+    if (error) return { name: t.name, label: t.label, error: error.message };
+    return { name: t.name, label: t.label, count: count ?? 0 };
+  }
+
+  async function load() {
+    const grid = document.getElementById('tables-grid');
+    grid.innerHTML = TABLES.map(t => `
+      <div class="card" id="card-${t.name}">
+        <div class="table-name">${t.name}</div>
+        <div class="count zero">…</div>
+        <div class="label-below">${t.label}</div>
+      </div>
+    `).join('');
+
+    let anyError = null;
+    let total = 0;
+
+    for (const t of TABLES) {
+      const r = await checkTable(t);
+      const card = document.getElementById('card-' + t.name);
+      const countEl = card.querySelector('.count');
+      if (r.error) {
+        anyError = r.error;
+        countEl.textContent = 'err';
+        countEl.classList.remove('zero');
+        countEl.style.color = 'var(--red)';
+        card.querySelector('.label-below').textContent = r.error.slice(0, 60);
+      } else {
+        countEl.textContent = r.count.toLocaleString();
+        countEl.classList.remove('zero');
+        if (r.count > 0) countEl.classList.add('has');
+        else countEl.classList.add('zero');
+        total += r.count;
+      }
+    }
+
+    document.getElementById('check-time').textContent = new Date().toLocaleTimeString();
+
+    if (anyError) {
+      setStatus('err', 'Connected, but errors hitting tables — see cards');
+    } else {
+      setStatus('ok', `Connected — ${total.toLocaleString()} total rows visible`);
+    }
+  }
+
+  load().catch(e => {
+    setStatus('err', 'Failed: ' + e.message);
+    document.getElementById('tables-grid').innerHTML =
+      `<div class="card" style="grid-column: 1 / -1; color: var(--red);">${e.message}</div>`;
+  });
+</script>
+
+</body>
+</html>
