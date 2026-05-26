@@ -172,10 +172,11 @@
     background: var(--panel-2);
     color: var(--text-dim);
   }
-  .badge.sales { background: rgba(255, 107, 53, 0.15); color: var(--accent); }
-  .badge.ad    { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
-  .badge.fba   { background: rgba(74, 222, 128, 0.15); color: var(--green); }
-  .badge.blb   { background: rgba(56, 189, 248, 0.15); color: var(--blue); }
+  .badge.sales        { background: rgba(255, 107, 53, 0.15); color: var(--accent); }
+  .badge.ad           { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
+  .badge.fba          { background: rgba(74, 222, 128, 0.15);  color: var(--green); }
+  .badge.fba_planning { background: rgba(251, 191, 36, 0.15);  color: var(--yellow); }
+  .badge.blb          { background: rgba(56, 189, 248, 0.15);  color: var(--blue); }
   .badge.done  { background: rgba(74, 222, 128, 0.15); color: var(--green); }
   .badge.error { background: rgba(248, 113, 113, 0.15); color: var(--red); }
 
@@ -279,7 +280,7 @@
     <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
       <div class="icon">↑</div>
       <div class="big">Drag a CSV here, or click to choose</div>
-      <div class="small">Sales · Ads · FBA Inventory · BURLEBO Inventory</div>
+      <div class="small">Sales · Ads · FBA Inventory · FBA Planning · BURLEBO Inventory</div>
       <input type="file" id="file-input" accept=".csv">
     </div>
     <div id="preview-container"></div>
@@ -368,7 +369,13 @@
     if (hset.has('date range') && (hset.has('advertised product sku') || hset.has('advertised sku'))) {
       return 'ad';
     }
-    // FBA inventory: distinctive columns
+    // FBA Inventory Planning report (the "restock" / strategic view).
+    // Detect this BEFORE the Manage FBA check because Planning has the more
+    // operationally useful numbers ("available" matches Seller Central).
+    if (hset.has('inventory supply at fba') && hset.has('total reserved quantity')) {
+      return 'fba_planning';
+    }
+    // Manage FBA Inventory report (real-time, fast inbound updates).
     if (hset.has('afn-fulfillable-quantity') || hset.has('afn-total-quantity')) {
       return 'fba';
     }
@@ -530,10 +537,11 @@
   function showPreview(type, file, rows) {
     const container = document.getElementById('preview-container');
     const typeLabels = {
-      sales: { title: 'Daily Sales', badge: 'sales', desc: `${rows.length} SKU rows` },
-      ad:    { title: 'Daily Ads',   badge: 'ad',    desc: `${rows.length} ad rows` },
-      fba:   { title: 'FBA Inventory snapshot', badge: 'fba', desc: `${rows.length} SKUs — replaces previous snapshot` },
-      blb:   { title: 'BURLEBO Inventory snapshot', badge: 'blb', desc: `${rows.length} rows across channels/locations — replaces previous snapshot` },
+      sales:        { title: 'Daily Sales',                    badge: 'sales',        desc: `${rows.length} SKU rows` },
+      ad:           { title: 'Daily Ads',                      badge: 'ad',           desc: `${rows.length} ad rows` },
+      fba:          { title: 'FBA Inventory snapshot (Manage)', badge: 'fba',          desc: `${rows.length} SKUs — replaces previous snapshot` },
+      fba_planning: { title: 'FBA Planning snapshot',          badge: 'fba_planning', desc: `${rows.length} SKUs — replaces previous Planning snapshot` },
+      blb:          { title: 'BURLEBO Inventory snapshot',     badge: 'blb',          desc: `${rows.length} rows across channels/locations — replaces previous snapshot` },
     };
     const t = typeLabels[type];
 
@@ -615,6 +623,9 @@
     } else if (currentType === 'fba') {
       const { count } = await sb.from('fba_inventory_snapshot').select('*', { count: 'exact', head: true });
       existingCount = count ?? 0;
+    } else if (currentType === 'fba_planning') {
+      const { count } = await sb.from('fba_planning_snapshot').select('*', { count: 'exact', head: true });
+      existingCount = count ?? 0;
     } else if (currentType === 'blb') {
       const { count } = await sb.from('blb_inventory_snapshot').select('*', { count: 'exact', head: true });
       existingCount = count ?? 0;
@@ -650,10 +661,11 @@
 
     try {
       let result;
-      if (currentType === 'sales')      result = await uploadSales(currentRows, targetDate, uploadId);
-      else if (currentType === 'ad')    result = await uploadAds(currentRows, targetDate, uploadId);
-      else if (currentType === 'fba')   result = await uploadFba(currentRows, uploadId);
-      else if (currentType === 'blb')   result = await uploadBlb(currentRows, uploadId);
+      if (currentType === 'sales')             result = await uploadSales(currentRows, targetDate, uploadId);
+      else if (currentType === 'ad')           result = await uploadAds(currentRows, targetDate, uploadId);
+      else if (currentType === 'fba')          result = await uploadFba(currentRows, uploadId);
+      else if (currentType === 'fba_planning') result = await uploadFbaPlanning(currentRows, uploadId);
+      else if (currentType === 'blb')          result = await uploadBlb(currentRows, uploadId);
 
       await sb.from('uploads').update({ status: 'done', row_count: result.inserted }).eq('id', uploadId);
 
@@ -811,6 +823,47 @@
       });
     }
     const inserted = await batchInsert('fba_inventory_snapshot', toInsert, 1000, (done, total) => setProgress(15 + done/total*85));
+    return { inserted, skipped };
+  }
+
+  // ---- FBA Inventory Planning snapshot upload ----
+  // Stored in its own table so the two reports can be uploaded independently
+  // and joined on SKU at read time. Wipe-and-replace like the Manage snapshot.
+  async function uploadFbaPlanning(rows, uploadId) {
+    setProgress(5);
+    await sb.from('fba_planning_snapshot').delete().gte('id', 0);
+    setProgress(15);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const toInsert = [];
+    let skipped = 0;
+    for (const r of rows) {
+      const rawSku = (r['sku'] || r['SKU'] || '').trim();
+      if (!rawSku) { skipped++; continue; }
+      const { sku } = cleanSku(rawSku);
+
+      // Planning report uses lowercase, dash-separated headers like
+      // "Inventory Supply at FBA" (mixed-case for the newer cols). Be lenient.
+      const get = (key) => r[key] != null ? r[key] : '';
+
+      toInsert.push({
+        snapshot_date:    today,
+        sku, raw_sku:     rawSku,
+        asin:             get('asin') || get('ASIN'),
+        product_name:     get('product-name') || get('Product Name'),
+        available:        Math.round(parseNumber(get('available'))),
+        on_hand:          Math.round(parseNumber(get('Inventory Supply at FBA'))),
+        reserved:         Math.round(parseNumber(get('Total Reserved Quantity'))),
+        unfulfillable:    Math.round(parseNumber(get('unfulfillable-quantity'))),
+        inbound_total:    Math.round(parseNumber(get('inbound-quantity'))),
+        inbound_working:  Math.round(parseNumber(get('inbound-working'))),
+        inbound_shipped:  Math.round(parseNumber(get('inbound-shipped'))),
+        inbound_received: Math.round(parseNumber(get('inbound-received'))),
+        days_of_supply:   parseNumber(get('days-of-supply')),
+        upload_id:        uploadId,
+      });
+    }
+    const inserted = await batchInsert('fba_planning_snapshot', toInsert, 1000, (done, total) => setProgress(15 + done/total*85));
     return { inserted, skipped };
   }
 
@@ -1087,7 +1140,7 @@
       return;
     }
 
-    const typeLabels = { sales: 'Sales', ad: 'Ad', fba: 'FBA Inventory', blb: 'BURLEBO Inventory' };
+    const typeLabels = { sales: 'Sales', ad: 'Ad', fba: 'FBA Inventory', fba_planning: 'FBA Planning', blb: 'BURLEBO Inventory' };
     container.innerHTML = `
       <table class="uploads-table">
         <thead><tr><th>Type</th><th>For date</th><th>File</th><th>Rows</th><th>Status</th><th>Uploaded</th></tr></thead>
