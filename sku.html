@@ -189,6 +189,11 @@
     if (parts.length !== 3 || parts.some(isNaN)) return null;
     return new Date(Date.UTC(parts[0], parts[1]-1, parts[2]));
   }
+  function addDays(d, n) {
+    const x = new Date(d.getTime());
+    x.setUTCDate(x.getUTCDate() + n);
+    return x;
+  }
   function fmt(n)  { if (n==null) return '—'; return '$' + Math.round(n).toLocaleString(); }
   function fmtN(n) { if (n==null) return '—'; return Math.round(n).toLocaleString(); }
   function fmtP(n) { if (n==null) return '—'; return (n*100).toFixed(2)+'%'; }
@@ -304,32 +309,67 @@
         return;
       }
 
-      // 3. Get sorted list of ALL dates we have (for the window-by-count logic from local)
-      // Pull just the distinct date list with revenue aggregation — small payload
-      const { data: allDatesRows } = await sb
-        .from('sales_daily')
-        .select('date, revenue')
-        .order('date', { ascending: true })
-        .limit(10000);
-      const dateRevMap = new Map();
-      for (const r of (allDatesRows || [])) {
-        const dStr = (r.date instanceof Date) ? toISO(r.date) : String(r.date).slice(0,10);
-        dateRevMap.set(dStr, (dateRevMap.get(dStr) || 0) + parseFloat(r.revenue || 0));
+      // 3. Build calendar-day windows anchored on the most recent date with
+      //    sales data (latestSalesISO). Previously this counted "last N
+      //    dates that had any uploads" which broke when there were gaps in
+      //    uploaded data — e.g. T365 reached back into 2023 because only a
+      //    handful of 2026 dates were uploaded. Now: T30 = last 30 calendar
+      //    days inclusive of the latest sales date, etc. Matches the rest of
+      //    the app (Analytics, Goal, Inventory).
+      const latestDate = parseISO(latestSalesISO);
+      function windowFor(days) {
+        // Returns a Set of ISO date strings for the last `days` calendar days
+        // ending on (and including) latestDate.
+        const out = new Set();
+        for (let i = 0; i < days; i++) {
+          out.add(toISO(addDays(latestDate, -i)));
+        }
+        return out;
       }
-      const sortedDates = [...dateRevMap.keys()].sort();
-      const n = sortedDates.length;
-      const lastN = (count) => new Set(sortedDates.slice(Math.max(0, n - count)));
-      const d7   = lastN(7);
-      const d14  = lastN(14);
-      const d30  = lastN(30);
-      const d90  = lastN(90);
-      const d365 = lastN(365);
+      function rangeWindow(fromDaysAgo, toDaysAgo) {
+        // Half-open window [fromDaysAgo, toDaysAgo) calendar days ending at
+        // latestDate. Used for the "previous" comparison windows.
+        const out = new Set();
+        for (let i = fromDaysAgo; i < toDaysAgo; i++) {
+          out.add(toISO(addDays(latestDate, -i)));
+        }
+        return out;
+      }
+      const d7   = windowFor(7);
+      const d14  = windowFor(14);
+      const d30  = windowFor(30);
+      const d90  = windowFor(90);
+      const d365 = windowFor(365);
       const cur7  = d7;
-      const prev7 = new Set(sortedDates.slice(Math.max(0, n - 14), Math.max(0, n - 7)));
+      const prev7 = rangeWindow(7, 14);    // 8-14 days ago
       const cur30 = d30;
-      const prev30 = new Set(sortedDates.slice(Math.max(0, n - 60), Math.max(0, n - 30)));
+      const prev30 = rangeWindow(30, 60);  // 31-60 days ago
 
-      // Total business revenue 30d (for % share)
+      // Need total business revenue across all SKUs in the 30d window for
+      // "% of biz" calculations. Pull aggregated daily revenue across the
+      // calendar window (paginate to avoid the 1000-row default cap).
+      const PAGE = 1000;
+      const dateRevMap = new Map();
+      let offset = 0;
+      const winStart = toISO(addDays(latestDate, -29));
+      const winEnd   = toISO(latestDate);
+      while (true) {
+        const { data: revPage, error: revErr } = await sb
+          .from('sales_daily')
+          .select('date, revenue')
+          .gte('date', winStart).lte('date', winEnd)
+          .range(offset, offset + PAGE - 1);
+        if (revErr) throw new Error(revErr.message);
+        if (!revPage || revPage.length === 0) break;
+        for (const r of revPage) {
+          const dStr = (r.date instanceof Date) ? toISO(r.date) : String(r.date).slice(0,10);
+          dateRevMap.set(dStr, (dateRevMap.get(dStr) || 0) + parseFloat(r.revenue || 0));
+        }
+        if (revPage.length < PAGE) break;
+        offset += PAGE;
+        if (offset > 500000) break;  // sanity cap
+      }
+
       let totalRev30 = 0;
       for (const d of d30) totalRev30 += dateRevMap.get(d) || 0;
 
