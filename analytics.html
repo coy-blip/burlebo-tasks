@@ -295,9 +295,12 @@
     const start = addDays(end, -(days-1));
     document.getElementById('a-start1').value = toISO(start);
     document.getElementById('a-end1').value = toISO(end);
-    // Clear comparison
-    document.getElementById('a-start2').value = '';
-    document.getElementById('a-end2').value = '';
+    // Auto-fill compare period as the equal-length window immediately before
+    // the primary range (e.g. 30D → compare = days 31-60 ago).
+    const compareEnd   = addDays(start, -1);
+    const compareStart = addDays(compareEnd, -(days-1));
+    document.getElementById('a-start2').value = toISO(compareStart);
+    document.getElementById('a-end2').value   = toISO(compareEnd);
     loadAnalytics();
   }
 
