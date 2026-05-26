@@ -345,7 +345,7 @@
         allRows.push(...chunkRows);
       }
 
-      // 5. Pull matched FBA inventory + BLB inventory
+      // 5. Pull matched FBA inventory (Manage + Planning) + BLB inventory
       const fbaRows = await fetchPaged('fba_inventory_snapshot',
         'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving',
         [['sku', 'in', '(' + matchedSkus.map(s => '"' + s.replace(/"/g, '""') + '"').join(',') + ')']]);
@@ -354,6 +354,16 @@
         const raw = String(f.raw_sku || '').toUpperCase();
         if (!(raw.startsWith('FBA-') || raw.startsWith('FBA2-'))) continue;
         fbaMap.set(String(f.sku || '').toUpperCase(), f);
+      }
+
+      // Planning snapshot — used for "available" (matches Seller Central).
+      const planningRows = await fetchPaged('fba_planning_snapshot',
+        'sku, raw_sku, available',
+        [['sku', 'in', '(' + matchedSkus.map(s => '"' + s.replace(/"/g, '""') + '"').join(',') + ')']]);
+      const planningMap = new Map();
+      for (const p of planningRows) {
+        const sku = String(p.sku || '').toUpperCase();
+        if (sku) planningMap.set(sku, p);
       }
 
       const blbRows = await fetchPaged('blb_inventory_snapshot',
@@ -423,7 +433,12 @@
         const velocity = calcVelocity(fbaU7, fbaU30, daysInFba);
 
         const fbaInv = fbaMap.get(sku) || {};
-        const fbaStock = fbaInv.fulfillable || 0;
+        const planInv = planningMap.get(sku);
+        // "FBA stock" prefers Planning's "available" (matches Seller Central),
+        // falls back to Manage's "fulfillable" when Planning is missing this SKU.
+        const fbaStock = (planInv && planInv.available != null)
+          ? planInv.available
+          : (fbaInv.fulfillable || 0);
         const fbaInbound = (fbaInv.inbound_working || 0) + (fbaInv.inbound_shipped || 0) + (fbaInv.inbound_receiving || 0);
         let daysSupply;
         if (fbaStock === 0) daysSupply = 0;
