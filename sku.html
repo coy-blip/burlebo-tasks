@@ -358,7 +358,7 @@
 
       // Planning snapshot — used for "available" (matches Seller Central).
       const planningRows = await fetchPaged('fba_planning_snapshot',
-        'sku, raw_sku, available',
+        'sku, raw_sku, available, on_hand, reserved',
         [['sku', 'in', '(' + matchedSkus.map(s => '"' + s.replace(/"/g, '""') + '"').join(',') + ')']]);
       const planningMap = new Map();
       for (const p of planningRows) {
@@ -434,12 +434,14 @@
 
         const fbaInv = fbaMap.get(sku) || {};
         const planInv = planningMap.get(sku);
-        // "FBA stock" prefers Planning's "available" (matches Seller Central),
-        // falls back to Manage's "fulfillable" when Planning is missing this SKU.
-        const fbaStock = (planInv && planInv.available != null)
-          ? planInv.available
-          : (fbaInv.fulfillable || 0);
-        const fbaInbound = (fbaInv.inbound_working || 0) + (fbaInv.inbound_shipped || 0) + (fbaInv.inbound_receiving || 0);
+        // FBA inventory formula:  on_hand + inbound - reserved
+        // (matches inventory page and shipment builder)
+        const fbaInbound = (fbaInv.inbound_working   || 0)
+                         + (fbaInv.inbound_shipped   || 0)
+                         + (fbaInv.inbound_receiving || 0);
+        const fbaOnHand   = (planInv && planInv.on_hand  != null) ? planInv.on_hand  : (fbaInv.fulfillable || 0);
+        const fbaReserved = (planInv && planInv.reserved != null) ? planInv.reserved : (fbaInv.reserved    || 0);
+        const fbaStock = fbaOnHand + fbaInbound - fbaReserved;
         let daysSupply;
         if (fbaStock === 0) daysSupply = 0;
         else if (velocity > 0) daysSupply = Math.round((fbaStock / velocity) * 10) / 10;
