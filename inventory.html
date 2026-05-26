@@ -272,11 +272,15 @@
           [['date', 'gte', startStr], ['date', 'lte', latestSalesDate]]);
       }
 
-      // Pull all FBA inventory (raw_sku starts with FBA-/FBA2- — the upload pipeline already prefixed these on the raw_sku field)
+      // Pull both FBA snapshots. Planning has the "available" number that
+      // matches Seller Central; Manage has the freshest inbound data.
+      // We use Planning for stock-on-hand and Manage for inbound (per design).
       const fba = await fetchPaged('fba_inventory_snapshot',
         'sku, raw_sku, asin, product_name, price, fulfillable, unsellable, reserved, total, inbound_working, inbound_shipped, inbound_receiving');
+      const planning = await fetchPaged('fba_planning_snapshot',
+        'sku, raw_sku, available, on_hand, reserved, unfulfillable, inbound_total');
 
-      const result = buildInventory(fba, salesWindow, latestSalesDate);
+      const result = buildInventory(fba, planning, salesWindow, latestSalesDate);
       window._invData = result;
       renderInventory();
     } catch (err) {
@@ -284,8 +288,16 @@
     }
   }
 
-  function buildInventory(fbaRows, salesWindow, latestSalesISO) {
+  function buildInventory(fbaRows, planningRows, salesWindow, latestSalesISO) {
     const latestDate = latestSalesISO ? parseISO(latestSalesISO) : null;
+
+    // Build a lookup of Planning data by SKU. This is the report whose
+    // "available" number matches Seller Central's displayed Available count.
+    const planningMap = new Map();
+    for (const row of planningRows || []) {
+      const sku = String(row.sku || '').toUpperCase();
+      if (sku) planningMap.set(sku, row);
+    }
 
     // For each (sku, date) -> units, and first date seen per sku
     // Sales window only goes back 90 days, so days_in_fba caps at 90.
@@ -373,7 +385,13 @@
       const groupRows = [];
       for (const sku of sortedSkus) {
         const invRow = invMap.get(sku) || {};
-        const inv = invRow.fulfillable || 0;
+        const planRow = planningMap.get(sku);
+        // "FBA Stock" column shows whichever is most accurate:
+        //   - Planning's "available" if we have it (matches Seller Central)
+        //   - else fall back to Manage's "fulfillable"
+        const inv = (planRow && planRow.available != null)
+          ? planRow.available
+          : (invRow.fulfillable || 0);
         totalInv += inv;
         const u7  = getShipped(sku, 7);
         const u30 = getShipped(sku, 30);
@@ -390,8 +408,10 @@
           sku,
           product_name: invRow.product_name || '',
           fulfillable: inv,
+          // Reserved: prefer Planning's number; fall back to Manage.
+          reserved: (planRow && planRow.reserved != null) ? planRow.reserved : (invRow.reserved || 0),
           unsellable: invRow.unsellable || 0,
-          reserved: invRow.reserved || 0,
+          // Inbound: keep using Manage report — it updates fastest.
           inbound: (invRow.inbound_working || 0) + (invRow.inbound_shipped || 0) + (invRow.inbound_receiving || 0),
           u7, u30, u60, u90,
           velocity: Math.round(velocity * 1000) / 1000,
