@@ -327,9 +327,18 @@
       current = addDays(current, 1);
     }
 
-    const daysElapsed         = timeline.filter(r => r.actual !== null).length;
+    // Calendar days that have passed from goal start through today (inclusive),
+    // clamped to the goal end date. This is the right denominator for
+    // "where should we be by now?", independent of how many CSVs have been
+    // uploaded. Gaps in uploaded data should NOT lower the target.
+    let daysElapsed;
+    if (today < start)    daysElapsed = 0;
+    else if (today > end) daysElapsed = totalDays;
+    else                  daysElapsed = daysBetween(start, today) + 1; // +1: start day counts
+
+    const daysWithData        = timeline.filter(r => r.actual !== null).length;
     const totalActual         = timeline.reduce((s, r) => s + (r.actual || 0), 0);
-    const totalRequiredToDate = daysElapsed > 0 ? dailyRequired * daysElapsed : 0;
+    const totalRequiredToDate = dailyRequired * daysElapsed;
     const pctOfGoal           = target > 0 ? totalActual / target : 0;
     const paceDiff            = totalRequiredToDate > 0 ? (totalActual - totalRequiredToDate) / totalRequiredToDate : 0;
     const daysRemaining       = today <= end ? daysBetween(today, end) : 0;
@@ -345,6 +354,7 @@
       pct_of_goal: pctOfGoal,
       pace_diff: paceDiff,
       days_elapsed: daysElapsed,
+      days_with_data: daysWithData,
       days_remaining: daysRemaining,
       needed_per_day_remaining: neededPerDayRemaining,
       timeline,
@@ -404,7 +414,7 @@
         `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">${d.error}</div></div>`;
       return;
     }
-    if (d.days_elapsed === 0) {
+    if (d.days_with_data === 0) {
       document.getElementById('goals-content').innerHTML = `
         <div class="empty">
           <div class="empty-icon">📊</div>
