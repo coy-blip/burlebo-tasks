@@ -173,35 +173,16 @@
   .locked h2 { font-size: 18px; font-weight: 600; margin: 0 0 6px 0; }
   .locked p { font-size: 14px; color: var(--text-dim); margin: 0; max-width: 420px; margin: 0 auto; line-height: 1.5; }
 </style>
+<script src="/auth.js"></script>
 </head>
 <body>
 
 <!-- Role modal -->
-<div class="modal-overlay" id="role-modal">
-  <div class="modal-card">
-    <div class="modal-title">Burlebo Analytics</div>
-    <div class="modal-sub" id="modal-sub">Choose your role to get started.</div>
-    <div class="modal-options" id="role-options">
-      <button class="modal-option" onclick="pickRole('coy')"><span class="dot coy"></span> Coy Needham (Owner)</button>
-      <button class="modal-option" onclick="pickRole('designer')"><span class="dot designer"></span> Graphic Designer</button>
-      <button class="modal-option" onclick="pickRole('admin')"><span class="dot admin"></span> Executive Admin</button>
-      <button class="modal-option" onclick="pickRole('employee')"><span class="dot employee"></span> Employee</button>
-    </div>
-    <div class="pw-field" id="pw-field">
-      <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw();if(event.key==='Escape')cancelPw()">
-      <div class="pw-error" id="pw-error">Incorrect password.</div>
-      <div class="pw-row">
-        <button class="btn ghost" style="flex:1" onclick="cancelPw()">Back</button>
-        <button class="btn primary" style="flex:1" onclick="checkPw()">Continue</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <header id="app-header" style="display:none;">
   <h1>Burlebo Analytics</h1>
   <nav id="main-nav">
-    <span class="role-pill" id="role-pill" onclick="logout()"></span>
+    <span class="role-pill" id="role-pill"></span>
   </nav>
 </header>
 
@@ -273,47 +254,8 @@
   // ============================================================================
   // Role auth
   // ============================================================================
-  const ROLES = {
-    coy:      { name: 'Coy Needham (Owner)', password: 'coyneedham', cls: 'coy' },
-    designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
-    admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin' },
-    employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
-  };
-  let role = null;
-  let pendingRole = null;
 
-  function pickRole(r) {
-    pendingRole = r;
-    document.getElementById('modal-sub').textContent = `Enter password for ${ROLES[r].name}.`;
-    document.getElementById('role-options').style.display = 'none';
-    document.getElementById('pw-field').style.display = 'block';
-    document.getElementById('pw-input').value = '';
-    document.getElementById('pw-error').style.display = 'none';
-    document.getElementById('pw-input').focus();
-  }
-  function cancelPw() {
-    pendingRole = null;
-    document.getElementById('modal-sub').textContent = 'Choose your role to get started.';
-    document.getElementById('role-options').style.display = 'flex';
-    document.getElementById('pw-field').style.display = 'none';
-  }
-  function checkPw() {
-    if (!pendingRole) return;
-    if (document.getElementById('pw-input').value === ROLES[pendingRole].password) enterApp(pendingRole);
-    else {
-      document.getElementById('pw-error').style.display = 'block';
-      document.getElementById('pw-input').value = '';
-      document.getElementById('pw-input').focus();
-    }
-  }
-  function enterApp(r) {
-    role = r;
-    document.getElementById('role-modal').style.display = 'none';
-    document.getElementById('app-header').style.display = 'flex';
-    document.getElementById('app-main').classList.remove('hidden');
-    const pill = document.getElementById('role-pill');
-    pill.className = 'role-pill ' + ROLES[r].cls;
-    pill.textContent = ROLES[r].name + ' ✕';
+  window.onAuthReady = function (r) {
     loadSharedNav();
 
     // Coy-only gate
@@ -328,14 +270,7 @@
       document.getElementById('locked-view').style.display = 'block';
       document.getElementById('todo-sub').textContent = '';
     }
-  }
-  function logout() {
-    role = null;
-    document.getElementById('app-header').style.display = 'none';
-    document.getElementById('app-main').classList.add('hidden');
-    cancelPw();
-    document.getElementById('role-modal').style.display = 'flex';
-  }
+  };
 
   // ============================================================================
   // To-Do state — localStorage
