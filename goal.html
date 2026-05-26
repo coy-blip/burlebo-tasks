@@ -379,19 +379,35 @@
     const startStr = goalConfig.start_date || '2026-01-01';
     const endStr   = goalConfig.end_date   || '2026-12-31';
 
-    const { data: salesRows, error: salesErr } = await sb
-      .from('sales_daily')
-      .select('date, revenue')
-      .gte('date', startStr)
-      .lte('date', endStr);
-    if (salesErr) {
-      document.getElementById('goals-content').innerHTML =
-        `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Couldn't load sales</div><div class="empty-sub">${salesErr.message}</div></div>`;
-      return;
+    // Fetch ALL rows in the date window. Supabase/PostgREST caps a single
+    // response at 1000 rows by default, so we paginate via .range() until we
+    // get a short page back.
+    const PAGE = 1000;
+    const allSalesRows = [];
+    let offset = 0;
+    while (true) {
+      const { data: page, error: salesErr } = await sb
+        .from('sales_daily')
+        .select('date, revenue')
+        .gte('date', startStr)
+        .lte('date', endStr)
+        .order('date', { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (salesErr) {
+        document.getElementById('goals-content').innerHTML =
+          `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Couldn't load sales</div><div class="empty-sub">${salesErr.message}</div></div>`;
+        return;
+      }
+      if (!page || page.length === 0) break;
+      allSalesRows.push(...page);
+      if (page.length < PAGE) break;  // last page reached
+      offset += PAGE;
+      // Sanity cap to prevent runaway loop — 1M rows is way more than we'll ever have
+      if (offset > 1_000_000) break;
     }
 
     const dailySales = {};
-    for (const r of salesRows || []) {
+    for (const r of allSalesRows) {
       const key = (r.date instanceof Date) ? toISO(r.date) : String(r.date).slice(0, 10);
       dailySales[key] = (dailySales[key] || 0) + parseFloat(r.revenue || 0);
     }
