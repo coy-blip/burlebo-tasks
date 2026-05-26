@@ -341,14 +341,14 @@
         const chunk = matchedSkus.slice(i, i + chunkSize);
         const chunkRows = await fetchPaged('sales_daily',
           'date, sku, is_fba, units, revenue, sessions',
-          [['sku', 'in', '(' + chunk.map(s => '"' + s.replace(/"/g, '""') + '"').join(',') + ')']]);
+          [['sku', 'in', chunk]]);
         allRows.push(...chunkRows);
       }
 
       // 5. Pull matched FBA inventory (Manage + Planning) + BLB inventory
       const fbaRows = await fetchPaged('fba_inventory_snapshot',
         'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving',
-        [['sku', 'in', '(' + matchedSkus.map(s => '"' + s.replace(/"/g, '""') + '"').join(',') + ')']]);
+        [['sku', 'in', matchedSkus]]);
       const fbaMap = new Map();
       for (const f of fbaRows) {
         const raw = String(f.raw_sku || '').toUpperCase();
@@ -359,7 +359,7 @@
       // Planning snapshot — used for "available" (matches Seller Central).
       const planningRows = await fetchPaged('fba_planning_snapshot',
         'sku, raw_sku, available, on_hand, reserved',
-        [['sku', 'in', '(' + matchedSkus.map(s => '"' + s.replace(/"/g, '""') + '"').join(',') + ')']]);
+        [['sku', 'in', matchedSkus]]);
       const planningMap = new Map();
       for (const p of planningRows) {
         const sku = String(p.sku || '').toUpperCase();
@@ -368,7 +368,7 @@
 
       const blbRows = await fetchPaged('blb_inventory_snapshot',
         'sku, channel, location, on_hand_avail',
-        [['location', 'eq', 'HQ'], ['sku', 'in', '(' + matchedSkus.map(s => '"' + s.replace(/"/g, '""') + '"').join(',') + ')']]);
+        [['location', 'eq', 'HQ'], ['sku', 'in', matchedSkus]]);
       const blbIndex = new Map();
       for (const r of blbRows) {
         const ch = String(r.channel || '').toLowerCase();
