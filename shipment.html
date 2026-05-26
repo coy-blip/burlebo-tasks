@@ -264,7 +264,7 @@
     return transfer;
   }
 
-  function buildShipment(fbaRows, planningRows, blbInventoryByShopifySku, salesWindow, latestSalesISO) {
+  function buildShipment(fbaRows, planningRows, blbInventoryByShopifySku, salesWindow, latestSalesISO, oosSnapshots = new Map()) {
     const latestDate = latestSalesISO ? parseISO(latestSalesISO) : null;
 
     // Build per-SKU sales maps (only FBA-tagged sales count for shipment logic)
@@ -357,7 +357,14 @@
     }
 
     // Pass 2: build
+    // Mutations to apply to oos_snapshots after the build is done:
+    //   - snapshotsToCreate: SKUs newly entering OOS that don't yet have a row
+    //   - snapshotsToDelete: SKUs that have a snapshot but are no longer OOS
+    //     (they've come back in stock — frozen value was already applied to
+    //     their units_to_ship, so we can clear the snapshot).
     const main = [], oos = [];
+    const snapshotsToCreate = []; // [{ sku, frozen_units, original_recommended }]
+    const usedSnapshotSkus = new Set();
     let totalUnits = 0;
     for (const rec of skuRows) {
       let include = rec.is_trigger;
@@ -369,19 +376,86 @@
       if (!include) continue;
 
       const recommended = calcRecommended(rec.effective_inv, rec.daily_vel);
-      if (recommended <= 0) continue;
+      const shopifySkuUpper = rec.shopify_sku.toUpperCase();
+      const existingSnap = oosSnapshots.get(shopifySkuUpper);
 
-      const blb = blbInventoryByShopifySku.get(rec.shopify_sku.toUpperCase()) || { ecommerce: 0, wholesale: 0 };
+      // If a SKU has an existing snapshot, it MUST be processed even if
+      // recommended <= 0 — otherwise restocked-but-low-velocity SKUs would
+      // silently fall off and lose their frozen units.
+      if (recommended <= 0 && !existingSnap) continue;
+
+      const blb = blbInventoryByShopifySku.get(shopifySkuUpper) || { ecommerce: 0, wholesale: 0 };
       const ecom = blb.ecommerce || 0;
       const wholesale = blb.wholesale || 0;
       const totalAvail = ecom + wholesale;
+      const isOos = totalAvail < OOS_THRESHOLD;
 
-      if (totalAvail < OOS_THRESHOLD) {
-        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
+      // ----- OOS at HQ branch ---------------------------------------------
+      if (isOos) {
+        let unitsNeeded;
+        if (existingSnap) {
+          // Already frozen — keep the snapshot value, don't recompute.
+          unitsNeeded = existingSnap.frozen_units;
+          usedSnapshotSkus.add(shopifySkuUpper);
+        } else {
+          // Newly entering OOS — freeze at 50% of current recommended.
+          // Use Math.max(1, …) so we don't end up with a frozen value of 0
+          // when recommended is tiny (1 unit) — round up.
+          unitsNeeded = Math.max(1, Math.ceil(recommended * 0.5));
+          snapshotsToCreate.push({
+            sku: shopifySkuUpper,
+            frozen_units: unitsNeeded,
+            original_recommended: recommended,
+          });
+        }
+        oos.push({
+          amazon_sku: rec.amazon_sku,
+          shopify_sku: rec.shopify_sku,
+          units_needed: unitsNeeded,
+          frozen: !!existingSnap || true, // flag for the UI (always true on OOS rows now)
+        });
         continue;
       }
 
-      const unitsToShip = calcShipmentQty(recommended, totalAvail);
+      // ----- In-stock branch ----------------------------------------------
+      // If we have a snapshot for an in-stock SKU, that means it just came
+      // back. Use the frozen units instead of fresh velocity math — the
+      // snapshot will be deleted at the end of this build.
+      let unitsToShip;
+      if (existingSnap) {
+        // Cap by what HQ can actually cover (capping at totalAvail mirrors
+        // calcShipmentQty's behavior so we don't recommend shipping more
+        // than HQ has on hand).
+        unitsToShip = Math.min(existingSnap.frozen_units, totalAvail);
+        usedSnapshotSkus.add(shopifySkuUpper);
+        // Don't apply the existing partial/small-shipment skip rules to
+        // restocked-from-OOS rows — coy explicitly wants the frozen value
+        // to land on the shipment list when stock returns.
+        const recForStatus = existingSnap.original_recommended || existingSnap.frozen_units;
+        const isPartial = unitsToShip < recForStatus;
+        const transfer = calcTransfer(ecom, wholesale, unitsToShip);
+        let status;
+        if (transfer > 0) status = isPartial ? 'Restock (partial) — Needs Transfer' : 'Restock — Needs Transfer';
+        else              status = isPartial ? 'Restock (partial)'                  : 'Restock — Good To Go';
+
+        if (unitsToShip > 0) {
+          main.push({
+            amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku,
+            units_to_ship: unitsToShip, status,
+            transfer_amount: transfer > 0 ? transfer : null,
+            recommended: recForStatus,
+            current_inv: rec.inv, inbound: rec.inbound, effective_inv: rec.effective_inv,
+            days_supply: rec.days_supply !== null ? Math.round(rec.days_supply * 10) / 10 : 0,
+            daily_vel: Math.round(rec.daily_vel * 1000) / 1000,
+            restocked_from_oos: true,
+          });
+          totalUnits += unitsToShip;
+        }
+        continue;
+      }
+
+      // ----- Normal in-stock path (no snapshot involved) ------------------
+      unitsToShip = calcShipmentQty(recommended, totalAvail);
       const blbCanCover = totalAvail >= recommended;
 
       if (unitsToShip <= 0) {
@@ -411,10 +485,31 @@
       totalUnits += unitsToShip;
     }
 
+    // Snapshots we had on file but didn't match any SKU we built today (the
+    // SKU is no longer triggering at all, or velocity is now zero with stock):
+    // also clear those — they're no longer relevant.
+    const snapshotsToDelete = [];
+    for (const sku of oosSnapshots.keys()) {
+      if (!usedSnapshotSkus.has(sku)) snapshotsToDelete.push(sku);
+    }
+    // SKUs that came back in stock AND went onto `main` — clear their
+    // snapshots so subsequent loads don't keep applying the frozen value.
+    for (const r of main) {
+      if (r.restocked_from_oos) {
+        snapshotsToDelete.push(r.shopify_sku.toUpperCase());
+      }
+    }
+
     main.sort((a, b) => a.shopify_sku.localeCompare(b.shopify_sku));
     oos.sort((a, b) => a.shopify_sku.localeCompare(b.shopify_sku));
 
-    return { main, oos, total_units: totalUnits, run_date: latestSalesISO };
+    return {
+      main, oos,
+      total_units: totalUnits,
+      run_date: latestSalesISO,
+      snapshotsToCreate,
+      snapshotsToDelete,
+    };
   }
 
   // ============================================================================
@@ -485,7 +580,44 @@
         blbIndex.set(sku, entry);
       }
 
-      const result = buildShipment(fba, planning, blbIndex, salesWindow, latestSalesDate);
+      // Fetch any existing OOS snapshots. These are SKUs that previously
+      // went OOS at HQ; we have a frozen "units needed" value for each.
+      const { data: snapRows, error: snapErr } = await sb
+        .from('oos_snapshots')
+        .select('sku, frozen_units, original_recommended');
+      if (snapErr) throw new Error('oos_snapshots: ' + snapErr.message);
+      const oosSnapshots = new Map();
+      for (const r of (snapRows || [])) {
+        oosSnapshots.set(String(r.sku || '').toUpperCase(), {
+          frozen_units: r.frozen_units,
+          original_recommended: r.original_recommended,
+        });
+      }
+
+      const result = buildShipment(fba, planning, blbIndex, salesWindow, latestSalesDate, oosSnapshots);
+
+      // Apply snapshot mutations: insert new snapshots, delete used/stale ones.
+      // Failures here are non-fatal — log and keep going. The UI still renders
+      // correctly; we'd just lose the freeze on the affected SKUs.
+      if (result.snapshotsToCreate.length > 0) {
+        const { error: insErr } = await sb.from('oos_snapshots').upsert(
+          result.snapshotsToCreate.map(s => ({
+            sku: s.sku,
+            frozen_units: s.frozen_units,
+            original_recommended: s.original_recommended,
+          })),
+          { onConflict: 'sku' }
+        );
+        if (insErr) console.error('Snapshot insert failed:', insErr.message);
+      }
+      if (result.snapshotsToDelete.length > 0) {
+        const { error: delErr } = await sb
+          .from('oos_snapshots')
+          .delete()
+          .in('sku', [...new Set(result.snapshotsToDelete)]);
+        if (delErr) console.error('Snapshot delete failed:', delErr.message);
+      }
+
       window._shipData = result;
       window._shipRows = result.main.map(r => ({ ...r }));
       renderShipment();
@@ -563,10 +695,10 @@
   }
 
   function renderOos(oos) {
-    let html = `<div class="section-hdr"><div class="section-title" style="color: var(--red);">⚠️ OOS at HQ — Cannot Ship</div><div class="section-sub">${oos.length} SKU${oos.length===1?'':'s'} need restocking at HQ before they can be sent to FBA</div></div>`;
-    html += '<div class="table-wrap"><table><thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units Needed</th></tr></thead><tbody>';
+    let html = `<div class="section-hdr"><div class="section-title" style="color: var(--red);">⚠️ OOS at HQ — Cannot Ship</div><div class="section-sub">${oos.length} SKU${oos.length===1?'':'s'} need restocking at HQ before they can be sent to FBA. <span style="color:var(--text-dim);">Units shown are frozen at 50% of recommended at the moment each SKU went OOS, so the number doesn't decay to zero while the SKU sits out of stock.</span></div></div>`;
+    html += '<div class="table-wrap"><table><thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units Needed (frozen)</th></tr></thead><tbody>';
     for (const r of oos) {
-      html += `<tr><td class="mono" style="color: var(--red);">FBA-${r.shopify_sku}</td><td class="mono">${r.shopify_sku}</td><td class="r">${fmtN(r.units_needed)}</td></tr>`;
+      html += `<tr><td class="mono" style="color: var(--red);">FBA-${r.shopify_sku}</td><td class="mono">${r.shopify_sku}</td><td class="r">🔒 ${fmtN(r.units_needed)}</td></tr>`;
     }
     html += '</tbody></table></div>';
     return html;
