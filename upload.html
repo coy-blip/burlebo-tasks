@@ -308,7 +308,7 @@
     <div class="dropzone" id="bulk-dropzone" onclick="document.getElementById('bulk-file-input').click()">
       <div class="icon">≡</div>
       <div class="big">Drop many Sales/Ad CSVs here, or click to choose</div>
-      <div class="small">Filename must be <code>Daily_Sales_Data_MM-DD-YY.csv</code> or <code>Daily_AD_Data_MM-DD-YY.csv</code></div>
+      <div class="small">Filename must be <code>Daily Sales Data MM-DD-YY.csv</code> or <code>Daily AD Data MM-DD-YY.csv</code> (spaces or underscores OK)</div>
       <input type="file" id="bulk-file-input" accept=".csv" multiple>
     </div>
     <div id="bulk-preview-container"></div>
@@ -945,11 +945,13 @@
   // Bulk historical upload
   // ============================================================================
   // Parses filenames like:
-  //   Daily_Sales_Data_05-21-26.csv -> { type: 'sales', date: '2026-05-21' }
-  //   Daily_AD_Data_05-21-26.csv    -> { type: 'ad',    date: '2026-05-21' }
+  //   Daily Sales Data 05-21-26.csv  -> { type: 'sales', date: '2026-05-21' }
+  //   Daily_Sales_Data_05-21-26.csv  -> { type: 'sales', date: '2026-05-21' }
+  //   Daily AD Data 05-21-26.csv     -> { type: 'ad',    date: '2026-05-21' }
+  // Separators between words can be spaces or underscores (mix is fine).
   // YY is interpreted as 20YY.
   function parseBulkFilename(name) {
-    const m = name.match(/^Daily_(Sales|AD)_Data_(\d{2})-(\d{2})-(\d{2})\.csv$/i);
+    const m = name.match(/^Daily[ _](Sales|AD)[ _]Data[ _](\d{2})-(\d{2})-(\d{2})\.csv$/i);
     if (!m) return null;
     const type = m[1].toLowerCase() === 'sales' ? 'sales' : 'ad';
     const mo = parseInt(m[2], 10);
