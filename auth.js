@@ -130,6 +130,11 @@
   // ---------------------------------------------------------------------------
   // CSS — injected once so every page gets the modal + denied styles
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // CSS — injected once so every page gets the modal + denied styles.
+  // All colors are HARDCODED (no var() lookups) so the modal looks identical
+  // on the dark dashboard pages AND the light-themed tracker page.
+  // ---------------------------------------------------------------------------
   const CSS = `
     .auth-overlay {
       position: fixed; inset: 0;
@@ -139,64 +144,67 @@
       font-family: 'DM Sans', system-ui, sans-serif;
     }
     .auth-card {
-      background: var(--panel, #14171c);
-      border: 1px solid var(--border, #252a33);
-      border-radius: var(--radius, 10px);
+      background: #14171c;
+      border: 1px solid #252a33;
+      border-radius: 10px;
       padding: 28px; width: 380px; max-width: calc(100vw - 32px);
-      color: var(--text, #e8eaed);
+      color: #e8eaed;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
     }
-    .auth-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
-    .auth-sub   { font-size: 13px; color: var(--text-dim, #8a92a0); margin: 0 0 20px 0; }
+    .auth-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; color: #e8eaed; }
+    .auth-sub   { font-size: 13px; color: #8a92a0; margin: 0 0 20px 0; }
     .auth-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
     .auth-option {
-      background: var(--panel-2, #1a1e25);
-      border: 1px solid var(--border, #252a33);
-      color: var(--text, #e8eaed);
+      background: #1a1e25;
+      border: 1px solid #252a33;
+      color: #e8eaed;
       padding: 13px 14px;
-      border-radius: var(--radius-sm, 6px);
+      border-radius: 6px;
       font-family: inherit; font-size: 14px; font-weight: 500;
       text-align: left; cursor: pointer;
       display: flex; align-items: center; gap: 10px;
     }
     .auth-option:hover { background: #1f242c; border-color: #2f3540; }
     .auth-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .auth-option .dot.coy      { background: var(--coy, #ff6b35); }
-    .auth-option .dot.designer { background: var(--designer, #a78bfa); }
-    .auth-option .dot.admin    { background: var(--admin, #4ade80); }
-    .auth-option .dot.employee { background: var(--employee, #38bdf8); }
+    .auth-option .dot.coy      { background: #ff6b35; }
+    .auth-option .dot.designer { background: #a78bfa; }
+    .auth-option .dot.admin    { background: #4ade80; }
+    .auth-option .dot.employee { background: #38bdf8; }
 
     .auth-pw { display: none; margin-top: 8px; }
     .auth-pw input {
       width: 100%; padding: 11px 12px;
       font-family: 'DM Sans', sans-serif; font-size: 14px;
-      background: var(--bg, #0d0f12); color: var(--text, #e8eaed);
-      border: 1px solid var(--border, #252a33);
-      border-radius: var(--radius-sm, 6px);
+      background: #0d0f12; color: #e8eaed;
+      border: 1px solid #252a33;
+      border-radius: 6px;
       outline: none; margin-bottom: 8px; box-sizing: border-box;
     }
-    .auth-pw input:focus { border-color: var(--accent, #ff6b35); }
-    .auth-err { display: none; font-size: 12px; color: var(--red, #f87171); margin-bottom: 8px; }
+    .auth-pw input:focus { border-color: #ff6b35; }
+    .auth-err { display: none; font-size: 12px; color: #f87171; margin-bottom: 8px; }
     .auth-pw-row { display: flex; gap: 8px; }
     .auth-btn {
       flex: 1; padding: 10px 14px;
       font-family: inherit; font-size: 13px; font-weight: 600;
-      border-radius: var(--radius-sm, 6px); cursor: pointer;
-      border: 1px solid var(--border, #252a33);
+      border-radius: 6px; cursor: pointer;
+      border: 1px solid #252a33;
     }
-    .auth-btn.ghost   { background: transparent; color: var(--text, #e8eaed); }
-    .auth-btn.primary { background: var(--accent, #ff6b35); color: white; border-color: var(--accent, #ff6b35); }
-    .auth-btn.ghost:hover   { background: var(--panel-2, #1a1e25); }
+    .auth-btn.ghost   { background: transparent; color: #e8eaed; }
+    .auth-btn.primary { background: #ff6b35; color: white; border-color: #ff6b35; }
+    .auth-btn.ghost:hover   { background: #1a1e25; }
     .auth-btn.primary:hover { opacity: 0.92; }
 
-    /* Denied panel */
+    /* Denied panel — also fully hardcoded so it reads correctly on the
+       light tracker theme as well as the dark dashboard pages. */
     .auth-denied {
       max-width: 480px; margin: 80px auto; text-align: center;
-      background: var(--panel, #14171c);
-      border: 1px solid var(--border, #252a33);
-      border-radius: var(--radius, 10px);
+      background: #14171c;
+      border: 1px solid #252a33;
+      border-radius: 10px;
       padding: 36px 28px;
       font-family: 'DM Sans', system-ui, sans-serif;
-      color: var(--text, #e8eaed);
+      color: #e8eaed;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
     }
     .auth-denied .icon {
       width: 56px; height: 56px; margin: 0 auto 16px;
@@ -204,9 +212,9 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 24px;
     }
-    .auth-denied h3 { font-size: 17px; font-weight: 700; margin: 0 0 8px 0; }
-    .auth-denied p  { font-size: 14px; color: var(--text-dim, #8a92a0); margin: 0 0 18px 0; line-height: 1.5; }
-    .auth-denied .countdown { font-size: 12px; color: var(--text-dim, #8a92a0); margin-top: 14px; }
+    .auth-denied h3 { font-size: 17px; font-weight: 700; margin: 0 0 8px 0; color: #e8eaed; }
+    .auth-denied p  { font-size: 14px; color: #8a92a0; margin: 0 0 18px 0; line-height: 1.5; }
+    .auth-denied .countdown { font-size: 12px; color: #8a92a0; margin-top: 14px; }
     .auth-denied .actions { display: flex; gap: 8px; justify-content: center; }
   `;
 
