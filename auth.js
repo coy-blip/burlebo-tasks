@@ -51,7 +51,7 @@
   // For paths, we normalize: '/' → '/index.html', strip trailing slashes.
   // ---------------------------------------------------------------------------
   const ACCESS = {
-    '/index.html':          { coy: 'edit', designer: 'edit', admin: 'view', employee: 'view' }, // Tracker
+    '/index.html':          { coy: 'edit', designer: 'edit'                                 }, // Tracker
     '/dashboard.html':      { coy: 'edit',                   admin: 'edit'                   },
     '/todo.html':           { coy: 'edit'                                                    },
     '/settings.html':       { coy: 'edit'                                                    },
@@ -69,13 +69,16 @@
     '/lookout.html':        { coy: 'edit',                   admin: 'edit'                   },
   };
 
-  // Where to redirect a denied role. Falls back to '/index.html'.
-  const HOME_FOR_ROLE = {
-    coy:      '/dashboard.html',
-    admin:    '/dashboard.html',
-    designer: '/index.html',
-    employee: '/index.html',
-  };
+  // Track the last *allowed* page the user visited, so when they hit a denied
+  // page we can send them back to where they came from. Stored in sessionStorage
+  // so it survives a reload but dies when the browser tab closes.
+  const LAST_PAGE_KEY = 'burlebo_last_page';
+  function rememberLastPage(path) {
+    try { sessionStorage.setItem(LAST_PAGE_KEY, path); } catch {}
+  }
+  function getLastPage() {
+    try { return sessionStorage.getItem(LAST_PAGE_KEY); } catch { return null; }
+  }
 
   // ---------------------------------------------------------------------------
   // sessionStorage helpers
@@ -241,18 +244,25 @@
     `;
   }
 
-  function buildDeniedHtml(role, homePath, seconds) {
+  function buildDeniedHtml(role, target) {
     const roleLabel = ROLES[role]?.name || role;
+    const targetHtml = target ? `
+        <div class="actions">
+          <button class="auth-btn ghost"   id="auth-denied-logout">Switch role</button>
+          <button class="auth-btn primary" id="auth-denied-go">Go back now</button>
+        </div>
+        <div class="countdown" id="auth-denied-count">Going back in 3s…</div>
+    ` : `
+        <div class="actions">
+          <button class="auth-btn ghost" id="auth-denied-logout">Switch role</button>
+        </div>
+    `;
     return `
       <div class="auth-denied">
         <div class="icon">🔒</div>
         <h3>Access restricted</h3>
-        <p>${roleLabel} doesn't have access to this page.<br>Redirecting you to your home page…</p>
-        <div class="actions">
-          <button class="auth-btn ghost"   id="auth-denied-logout">Switch role</button>
-          <button class="auth-btn primary" id="auth-denied-go" data-target="${homePath}">Go now</button>
-        </div>
-        <div class="countdown" id="auth-denied-count">Redirecting in ${seconds}s…</div>
+        <p>${roleLabel} doesn't have access to this page.</p>
+        ${targetHtml}
       </div>
     `;
   }
@@ -327,8 +337,11 @@
   // Denied panel flow
   // ---------------------------------------------------------------------------
   function showDenied(role) {
-    const home = HOME_FOR_ROLE[role] || '/index.html';
-    let seconds = 3;
+    const here = currentPath();
+    const last = getLastPage();
+    // Only auto-redirect if there's a previous page AND it's not the page we're
+    // currently on (would be a no-op redirect loop).
+    const target = (last && last !== here) ? last : null;
 
     // Hide existing app shell so user doesn't briefly see the page they
     // can't access while the countdown runs.
@@ -339,27 +352,34 @@
 
     const host = document.createElement('div');
     host.id = 'auth-denied-host';
-    host.innerHTML = buildDeniedHtml(role, home, seconds);
+    host.innerHTML = buildDeniedHtml(role, target);
     document.body.appendChild(host);
 
-    const countEl = document.getElementById('auth-denied-count');
-    redirectTimer = setInterval(() => {
-      seconds -= 1;
-      if (seconds <= 0) {
-        clearInterval(redirectTimer);
-        window.location.href = home;
-      } else {
-        countEl.textContent = `Redirecting in ${seconds}s…`;
+    if (target) {
+      let seconds = 3;
+      const countEl = document.getElementById('auth-denied-count');
+      redirectTimer = setInterval(() => {
+        seconds -= 1;
+        if (seconds <= 0) {
+          clearInterval(redirectTimer);
+          window.location.href = target;
+        } else {
+          countEl.textContent = `Going back in ${seconds}s…`;
+        }
+      }, 1000);
+
+      const goBtn = document.getElementById('auth-denied-go');
+      if (goBtn) {
+        goBtn.addEventListener('click', () => {
+          clearInterval(redirectTimer);
+          window.location.href = target;
+        });
       }
-    }, 1000);
+    }
 
     document.getElementById('auth-denied-logout').addEventListener('click', () => {
-      clearInterval(redirectTimer);
+      if (redirectTimer) clearInterval(redirectTimer);
       AuthApp.logout();
-    });
-    document.getElementById('auth-denied-go').addEventListener('click', () => {
-      clearInterval(redirectTimer);
-      window.location.href = home;
     });
   }
 
@@ -369,6 +389,10 @@
   function completeAuth(role, access) {
     AuthApp.role = role;
     AuthApp.access = access;
+
+    // Remember this page as the user's last successful destination, so if they
+    // navigate to a denied page next we can send them back here.
+    rememberLastPage(currentPath());
 
     // Style the role pill if the page has one
     const pill = document.getElementById('role-pill');
