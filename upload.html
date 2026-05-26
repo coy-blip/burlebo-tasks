@@ -742,7 +742,8 @@
   }
 
   function setProgress(pct) {
-    document.getElementById('progress-bar').style.width = pct + '%';
+    const el = document.getElementById('progress-bar');
+    if (el) el.style.width = pct + '%';
   }
 
   async function batchInsert(table, rows, batchSize = 1000, onProgress) {
