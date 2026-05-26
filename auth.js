@@ -69,6 +69,45 @@
     '/lookout.html':        { coy: 'edit',                   admin: 'edit'                   },
   };
 
+  // Human-readable page names — matches the labels in nav.html so the
+  // denied panel's "you can access" list reads naturally.
+  const PAGE_LABELS = {
+    '/index.html':          'Tracker',
+    '/dashboard.html':      'Dashboard',
+    '/snapshot.html':       'Snapshot',
+    '/upload.html':         'Upload',
+    '/analytics.html':      'Analytics',
+    '/ads.html':            'Ad Performance',
+    '/profit.html':         'Profit',
+    '/inventory.html':      'FBA Inventory',
+    '/shipment.html':       'FBA Shipment',
+    '/lookout.html':        'FBA Lookout',
+    '/sku.html':            'SKU Lookup',
+    '/report.html':         'Big Picture',
+    '/cannibalization.html':'Cannibalization',
+    '/todo.html':           'To-Do',
+    '/goal.html':           'Goal Tracker',
+    '/settings.html':       'Settings',
+  };
+
+  // Build the list of pages a role can access. Returns [{path, label}, …]
+  // in nav.html order, so users see the same ordering they're used to.
+  const PAGE_ORDER = [
+    '/index.html', '/dashboard.html', '/snapshot.html', '/upload.html',
+    '/analytics.html', '/ads.html', '/profit.html', '/inventory.html',
+    '/shipment.html', '/lookout.html', '/sku.html', '/report.html',
+    '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
+  ];
+  function pagesForRole(role) {
+    const out = [];
+    for (const path of PAGE_ORDER) {
+      if (accessFor(role, path)) {
+        out.push({ path, label: PAGE_LABELS[path] || path });
+      }
+    }
+    return out;
+  }
+
   // Track the last *allowed* page the user visited, so when they hit a denied
   // page we can send them back to where they came from. Stored in sessionStorage
   // so it survives a reload but dies when the browser tab closes.
@@ -216,6 +255,55 @@
     .auth-denied p  { font-size: 14px; color: #8a92a0; margin: 0 0 18px 0; line-height: 1.5; }
     .auth-denied .countdown { font-size: 12px; color: #8a92a0; margin-top: 14px; }
     .auth-denied .actions { display: flex; gap: 8px; justify-content: center; }
+
+    /* "Coy can access:" label above the pill list */
+    .auth-denied-pages-label {
+      font-size: 11px;
+      color: #8a92a0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+    /* Page pills the role can navigate to */
+    .auth-denied-pages {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 22px;
+    }
+    .auth-denied-page {
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: 6px;
+      background: #1a1e25;
+      border: 1px solid #252a33;
+      color: #e8eaed;
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .auth-denied-page:hover {
+      background: #1f242c;
+      border-color: #ff6b35;
+      color: #ff6b35;
+    }
+    /* Demoted "Switch role" text link at the very bottom */
+    .auth-denied-switch {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #252a33;
+      font-size: 12px;
+    }
+    .auth-denied-switch a {
+      color: #8a92a0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-color: #2f3540;
+      text-underline-offset: 3px;
+    }
+    .auth-denied-switch a:hover { color: #e8eaed; text-decoration-color: #8a92a0; }
   `;
 
   function injectStyles() {
@@ -254,23 +342,37 @@
 
   function buildDeniedHtml(role, target) {
     const roleLabel = ROLES[role]?.name || role;
-    const targetHtml = target ? `
+    const allowed = pagesForRole(role);
+
+    // List of pages this role CAN access (Tracker, FBA Inventory, etc.)
+    const pagesHtml = allowed.length > 0 ? `
+        <div class="auth-denied-pages-label">${roleLabel.split(' ')[0]} can access:</div>
+        <div class="auth-denied-pages">
+          ${allowed.map(p =>
+            `<a class="auth-denied-page" href="${p.path}">${p.label}</a>`
+          ).join('')}
+        </div>
+    ` : '';
+
+    // Primary action: go back (only when there's a previous page to return to)
+    const goBackHtml = target ? `
         <div class="actions">
-          <button class="auth-btn ghost"   id="auth-denied-logout">Switch role</button>
           <button class="auth-btn primary" id="auth-denied-go">Go back now</button>
         </div>
         <div class="countdown" id="auth-denied-count">Going back in 3s…</div>
-    ` : `
-        <div class="actions">
-          <button class="auth-btn ghost" id="auth-denied-logout">Switch role</button>
-        </div>
-    `;
+    ` : '';
+
+    // Demoted "Switch role" — small text link at the bottom
     return `
       <div class="auth-denied">
         <div class="icon">🔒</div>
         <h3>Access restricted</h3>
         <p>${roleLabel} doesn't have access to this page.</p>
-        ${targetHtml}
+        ${pagesHtml}
+        ${goBackHtml}
+        <div class="auth-denied-switch">
+          <a id="auth-denied-logout">Switch role</a>
+        </div>
       </div>
     `;
   }
