@@ -325,10 +325,17 @@
     for (const [sku, invRow] of invMap.entries()) {
       const shopifySku = stripFba(sku);
       const planRow = planningMap.get(sku);
-      // Per design: effective = Available (from Planning) + Inbound (from Manage)
-      const inv = (planRow && planRow.available != null) ? planRow.available : (invRow.fulfillable || 0);
-      const inbound = (invRow.inbound_working || 0) + (invRow.inbound_shipped || 0) + (invRow.inbound_receiving || 0);
-      const effective = inv + inbound;
+      // Combined FBA inventory formula:  on_hand + inbound - reserved
+      // (matches the inventory page exactly)
+      const inbound  = (invRow.inbound_working || 0)
+                     + (invRow.inbound_shipped || 0)
+                     + (invRow.inbound_receiving || 0);
+      const onHand   = (planRow && planRow.on_hand  != null) ? planRow.on_hand  : (invRow.fulfillable || 0);
+      const reserved = (planRow && planRow.reserved != null) ? planRow.reserved : (invRow.reserved    || 0);
+      const inv = onHand + inbound - reserved;
+      // "effective" is the same as inv now — inbound is already included.
+      // Kept as a named local for readability and downstream code compatibility.
+      const effective = inv;
       const u7 = getShipped(sku, 7);
       const u30 = getShipped(sku, 30);
       const daysInFba = getDaysInFba(sku);
@@ -457,7 +464,7 @@
       const fba = await fetchPaged('fba_inventory_snapshot',
         'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving');
       const planning = await fetchPaged('fba_planning_snapshot',
-        'sku, raw_sku, available');
+        'sku, raw_sku, available, on_hand, reserved');
 
       // BLB inventory — only HQ + eCommerce/Wholesale channels
       const blb = await fetchPaged('blb_inventory_snapshot',
@@ -529,7 +536,7 @@
     html += '<th style="width:36px;"></th>';
     html += '<th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units to Ship</th>';
     html += '<th>Status</th><th class="r">Transfer</th>';
-    html += '<th class="r">FBA Stock</th><th class="r">Inbound</th><th class="r">Effective</th>';
+    html += '<th class="r">FBA Stock</th><th class="r">Inbound</th>';
     html += '<th class="r">Days Supply</th><th class="r">Recommended</th>';
     html += '</tr></thead><tbody id="ship-tbody">';
 
@@ -543,7 +550,6 @@
         <td class="r">${r.transfer_amount ? fmtN(r.transfer_amount) : '—'}</td>
         <td class="r">${fmtN(r.current_inv)}</td>
         <td class="r" style="color: var(--blue);">${fmtN(r.inbound)}</td>
-        <td class="r">${fmtN(r.effective_inv)}</td>
         <td class="r">${r.days_supply ? r.days_supply.toFixed(1) + 'd' : '0d'}</td>
         <td class="r" style="color: var(--text-dim);">${fmtN(r.recommended)}</td>
       </tr>`;
