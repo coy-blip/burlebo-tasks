@@ -6,168 +6,222 @@
 <title>Goal Tracker — Burlebo Analytics</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="/auth.js"></script>
 <style>
+  /* Original-app palette — keeps this page matching the source dashboard look */
   :root {
-    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
-    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
-    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8;
-    --radius: 10px; --radius-sm: 6px;
-    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
-    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
-    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
-    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+    --bg: #0a0b0f;
+    --bg2: #10121a;
+    --bg3: #181b26;
+    --card: #1c1f2e;
+    --border: rgba(255,255,255,0.06);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e2e4ef;
+    --muted: #6b7094;
+    --orange: #f97316;
+    --blue: #3b82f6;
+    --green: #10b981;
+    --red: #ef4444;
+    --purple: #a855f7;
+    --gold: #f59e0b;
+    --teal: #06b6d4;
 
-  header {
-    border-bottom: 1px solid var(--border); padding: 18px 32px;
-    display: flex; align-items: center; justify-content: space-between; background: var(--panel);
+    /* Aliases consumed by auth.js modal — map onto this palette */
+    --panel:    var(--card);
+    --panel-2:  var(--bg3);
+    --text-dim: var(--muted);
+    --accent:   var(--orange);
+    --radius: 12px;
+    --radius-sm: 8px;
+
+    --coy:      #f97316;  --coy-bg:      rgba(249,115,22,0.15);
+    --designer: #a855f7;  --designer-bg: rgba(168,85,247,0.15);
+    --admin:    #10b981;  --admin-bg:    rgba(16,185,129,0.15);
+    --employee: #06b6d4;  --employee-bg: rgba(6,182,212,0.15);
   }
-  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
-  header nav { display: flex; gap: 18px; align-items: center; }
-  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
-  header nav a:hover { color: var(--text); }
-  header nav a.active { color: var(--accent); }
-  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+
+  /* HEADER (matches the rest of our dashboard, dark palette) */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 18px; letter-spacing: -0.5px; margin: 0;
+  }
+  header h1 span { color: var(--orange); }
+  header nav { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  header nav a {
+    color: var(--muted); text-decoration: none;
+    font-size: 13px; font-weight: 500;
+    padding: 6px 10px; border-radius: 6px;
+  }
+  header nav a:hover { color: var(--text); background: var(--bg3); }
+  header nav a.active { color: var(--orange); background: rgba(249,115,22,0.10); }
+  .role-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
   .role-pill:hover { opacity: 0.85; }
-  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.coy      { background: var(--coy-bg);      color: var(--coy); }
   .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
-  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.admin    { background: var(--admin-bg);    color: var(--admin); }
   .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
 
-  main { max-width: 1200px; margin: 0 auto; padding: 32px; }
+  /* MAIN */
+  main { flex: 1; padding: 24px; max-width: 1280px; margin: 0 auto; width: 100%; }
   main.hidden { display: none; }
-  h2 { font-size: 14px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 16px 0; }
-  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
-  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 28px 0; }
 
-  /* Hero progress card */
-  .hero {
-    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 28px;
-    margin-bottom: 20px;
-  }
-  .hero-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    align-items: center;
-  }
-  @media (max-width: 760px) { .hero-grid { grid-template-columns: 1fr; } }
-  .hero-num { font-size: 44px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; }
-  .hero-num.ahead { color: var(--green); }
-  .hero-num.behind { color: var(--red); }
-  .hero-label { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-  .hero-sub { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
+  /* HEAD STRIP */
+  .page-title { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  .page-sub   { font-size: 13px; color: var(--muted); margin-top: 4px; }
 
-  .progress-bar {
-    height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; margin: 16px 0 8px;
-    border: 1px solid var(--border);
+  .controls {
+    display: flex; align-items: center; gap: 10px;
+    margin: 20px 0; flex-wrap: wrap;
   }
-  .progress-bar .fill { height: 100%; background: linear-gradient(90deg, var(--accent), #ff9758); transition: width 0.4s; }
-  .progress-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+  .btn {
+    padding: 7px 14px; border-radius: 8px;
+    font-family: inherit; font-size: 13px; cursor: pointer;
+    border: 1px solid var(--border2); background: var(--bg3); color: var(--muted);
+    transition: all 0.15s; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--orange); color: var(--orange); background: rgba(249,115,22,0.08); }
+  .btn-primary { background: var(--orange); color: #fff; border-color: var(--orange); }
+  .btn-primary:hover { background: #ea6b0d; color: #fff; }
 
-  /* Stat grid */
-  .stat-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px; margin-bottom: 24px;
+  /* CARDS */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px;
   }
-  .stat-card {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 8px; padding: 16px;
-  }
-  .stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .stat-value { font-size: 22px; font-weight: 600; line-height: 1.1; }
-  .stat-foot { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
-  .stat-value.green { color: var(--green); }
-  .stat-value.red { color: var(--red); }
-
-  /* Chart */
-  .chart-wrap {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px;
-  }
-  svg.chart { display: block; width: 100%; height: 380px; }
-  .chart-legend { display: flex; gap: 18px; margin-bottom: 8px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
-  .chart-legend .item { display: flex; align-items: center; gap: 6px; }
-  .legend-swatch { width: 14px; height: 3px; border-radius: 1px; }
-
-  .empty-state {
-    text-align: center; padding: 60px 20px; color: var(--text-dim); font-size: 14px;
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  .card-title {
+    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 16px;
   }
 
-  /* Loading */
-  .loading { color: var(--text-dim); font-size: 14px; padding: 40px 0; text-align: center; }
+  /* KPI mini-cards */
+  .kpi { position: relative; overflow: hidden; }
+  .kpi::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .kpi.orange::after { background: var(--orange); }
+  .kpi.blue::after   { background: var(--blue); }
+  .kpi.green::after  { background: var(--green); }
+  .kpi.red::after    { background: var(--red); }
+  .kpi.muted::after  { background: var(--muted); }
+  .kpi-label {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px;
+  }
+  .kpi-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px; font-weight: 700; letter-spacing: -1px; line-height: 1;
+  }
 
-  /* Role modal (same as other pages) */
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  /* GOAL TRACKER bits */
+  .goal-bar-track {
+    height: 16px; background: var(--bg3); border-radius: 8px;
+    overflow: hidden; margin: 12px 0;
   }
-  .modal-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 380px; max-width: calc(100vw - 32px); }
-  .modal-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; }
-  .modal-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 20px 0; }
-  .modal-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-  .modal-option {
-    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
-    padding: 13px 14px; border-radius: var(--radius-sm); font-family: inherit; font-size: 14px;
-    font-weight: 500; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  .goal-bar-fill {
+    height: 100%; border-radius: 8px;
+    background: linear-gradient(90deg, var(--orange), var(--gold));
+    transition: width 0.6s;
   }
-  .modal-option:hover { background: #1f242c; border-color: #2f3540; }
-  .modal-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .modal-option .dot.coy { background: var(--coy); }
-  .modal-option .dot.designer { background: var(--designer); }
-  .modal-option .dot.admin { background: var(--admin); }
-  .modal-option .dot.employee { background: var(--employee); }
-  .pw-field { display: none; margin-top: 8px; }
-  .pw-field input {
-    width: 100%; padding: 11px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px;
-    background: var(--bg); color: var(--text); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); outline: none; margin-bottom: 8px;
+  .goal-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 14px; margin-bottom: 20px;
   }
-  .pw-field input:focus { border-color: var(--accent); }
-  .pw-error { display: none; font-size: 12px; color: var(--red); margin-bottom: 8px; }
-  .pw-row { display: flex; gap: 8px; }
-  .btn { padding: 10px 16px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
-  .btn:hover { background: #1f242c; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
-  .btn.primary:hover { opacity: 0.92; }
-  .btn.ghost { background: transparent; color: var(--text-dim); }
-  .btn.ghost:hover { color: var(--text); }
+  @media (max-width: 880px) { .goal-stats { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 460px) { .goal-stats { grid-template-columns: 1fr; } }
+
+  .section-hdr {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .section-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; }
+
+  /* CHART */
+  .chart-wrap { position: relative; }
+
+  /* TABLE */
+  .table-wrap {
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border); background: var(--card);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--bg3); padding: 10px 14px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+    color: var(--muted); text-align: left;
+    border-bottom: 1px solid var(--border); font-weight: 500;
+  }
+  th.r, td.r { text-align: right; }
+  td { padding: 10px 14px; font-size: 13px; border-top: 1px solid var(--border); }
+  tbody tr:first-child td { border-top: none; }
+  td.mono { font-family: 'DM Mono', monospace; font-size: 12px; }
+
+  /* EMPTY + LOADER */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .empty-sub { font-size: 13px; }
+  .loader {
+    display: flex; align-items: center; justify-content: center;
+    padding: 60px; gap: 10px; color: var(--muted); font-size: 13px;
+  }
+  .spin {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border2); border-top-color: var(--orange);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 
-<!-- Role modal -->
-
 <header id="app-header" style="display:none;">
-  <h1>Burlebo Analytics</h1>
+  <h1>Burlebo<span> /</span> Analytics</h1>
   <nav id="main-nav">
     <span class="role-pill" id="role-pill" title="Click to switch role"></span>
   </nav>
 </header>
 
 <main id="app-main" class="hidden">
-  <div class="page-title">Goal Tracker</div>
-  <div class="page-sub" id="page-sub">—</div>
+  <div class="page-title">🎯 Goal Tracker</div>
+  <div class="page-sub" id="page-sub">Loading goal config…</div>
 
-  <div id="content"><div class="loading">Loading data…</div></div>
+  <div class="controls">
+    <button class="btn btn-primary" onclick="loadGoals()">🔄 Refresh</button>
+    <a class="btn" href="/settings.html">⚙️ Edit Goal in Settings</a>
+  </div>
+
+  <div id="goals-content">
+    <div class="loader"><div class="spin"></div> Loading goal tracker…</div>
+  </div>
 </main>
 
 <script>
-  // ============================================================================
-  // Supabase + auth
-  // ============================================================================
-  // ============================================================================
-  // Shared nav loader — pulls /nav.html and injects + highlights active link
-  // ============================================================================
+  // =====================================================
+  // Shared nav loader
+  // =====================================================
   async function loadSharedNav() {
     try {
       const r = await fetch('/nav.html', { cache: 'no-cache' });
@@ -183,28 +237,42 @@
         if (href === here || (href === '/' && here === '/')) a.classList.add('active');
         nav.insertBefore(a, pill);
       }
-    } catch (err) {
-      console.error('Nav load failed:', err);
-    }
+    } catch (err) { console.error('Nav load failed:', err); }
   }
 
   const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-
   window.onAuthReady = function (r) {
     loadSharedNav();
-    loadGoal();
+    loadGoals();
   };
 
-  // ============================================================================
-  // Date helpers (UTC-safe, no timezone shifts)
-  // ============================================================================
+  // =====================================================
+  // Formatting helpers (mirror the original app)
+  // =====================================================
+  const fmt = v => v == null || isNaN(v) ? '—'
+    : v >= 1e6 ? '$' + (v/1e6).toFixed(2) + 'M'
+    : v >= 1e3 ? '$' + (v/1e3).toFixed(1) + 'K'
+    : '$' + v.toFixed(2);
+  const fmtP  = v => (v*100).toFixed(1) + '%';
+  const fmtPn = v => v > 0 ? '+' + fmtP(v) : fmtP(v);
+
+  function loading(elId) {
+    document.getElementById(elId).innerHTML = '<div class="loader"><div class="spin"></div> Loading…</div>';
+  }
+  function miniKpi(label, value, color) {
+    return `<div class="card kpi ${color}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`;
+  }
+
+  // =====================================================
+  // Date helpers (UTC-safe)
+  // =====================================================
   function toISO(date) {
-    return date.getUTCFullYear() + '-' +
-      String(date.getUTCMonth() + 1).padStart(2, '0') + '-' +
-      String(date.getUTCDate()).padStart(2, '0');
+    return date.getUTCFullYear() + '-'
+      + String(date.getUTCMonth() + 1).padStart(2, '0') + '-'
+      + String(date.getUTCDate()).padStart(2, '0');
   }
   function parseISO(s) {
     if (!s) return null;
@@ -212,63 +280,42 @@
     if (parts.length !== 3 || parts.some(isNaN)) return null;
     return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
   }
-  function daysBetween(a, b) {
-    return Math.round((b.getTime() - a.getTime()) / 86400000);
-  }
+  function daysBetween(a, b) { return Math.round((b.getTime() - a.getTime()) / 86400000); }
   function addDays(d, n) {
     const x = new Date(d.getTime());
     x.setUTCDate(x.getUTCDate() + n);
     return x;
   }
-  function formatDateLong(iso) {
-    const d = parseISO(iso);
-    if (!d) return iso;
-    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-  }
-  function formatMoney(n, decimals = 0) {
-    if (n == null) return '—';
-    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  }
-  function formatPct(n, decimals = 1) {
-    if (n == null) return '—';
-    return (n * 100).toFixed(decimals) + '%';
-  }
-  function todayISO() {
-    return toISO(new Date());
-  }
+  function todayISO() { return toISO(new Date()); }
 
-  // ============================================================================
-  // Goal Tracker calculator — JS port of goal_tracker.py
-  // ============================================================================
+  // =====================================================
+  // Calculator — same math as the Python goal_tracker
+  // =====================================================
   function buildGoalTracker(dailySales, config) {
-    const goal = config.goal || {};
-    const target = parseFloat(goal.target || 7000000);
+    const goal = (config && config.goal) || {};
+    const target   = parseFloat(goal.target || 7000000);
     const startStr = goal.start_date || '2026-01-01';
-    const endStr = goal.end_date || '2026-12-31';
+    const endStr   = goal.end_date   || '2026-12-31';
 
     const start = parseISO(startStr);
-    const end = parseISO(endStr);
+    const end   = parseISO(endStr);
     if (!start || !end) return { error: 'Invalid goal dates' };
 
     const totalDays = daysBetween(start, end) + 1;
     const dailyRequired = totalDays > 0 ? target / totalDays : 0;
+    const today = parseISO(todayISO());
 
-    const today = parseISO(todayISO()); // strip time to a UTC date
-
-    // Build timeline
     const timeline = [];
     let cumulativeRequired = 0;
     let cumulativeActual = 0;
-
     let current = new Date(start.getTime());
     while (current <= end) {
       const dateStr = toISO(current);
       cumulativeRequired += dailyRequired;
-      const actual = dailySales[dateStr]; // undefined if no data
+      const actual = dailySales[dateStr];
       const hasActual = actual !== undefined && actual !== null;
       if (hasActual) cumulativeActual += actual;
       const isPast = current <= today;
-
       timeline.push({
         date: dateStr,
         required: dailyRequired,
@@ -280,14 +327,12 @@
       current = addDays(current, 1);
     }
 
-    // Summary stats
-    const daysElapsed = timeline.filter(r => r.actual !== null).length;
-    const totalActual = timeline.reduce((s, r) => s + (r.actual || 0), 0);
+    const daysElapsed         = timeline.filter(r => r.actual !== null).length;
+    const totalActual         = timeline.reduce((s, r) => s + (r.actual || 0), 0);
     const totalRequiredToDate = daysElapsed > 0 ? dailyRequired * daysElapsed : 0;
-    const pctOfGoal = target > 0 ? totalActual / target : 0;
-    const paceDiff = totalRequiredToDate > 0 ? (totalActual - totalRequiredToDate) / totalRequiredToDate : 0;
-
-    const daysRemaining = today <= end ? daysBetween(today, end) : 0;
+    const pctOfGoal           = target > 0 ? totalActual / target : 0;
+    const paceDiff            = totalRequiredToDate > 0 ? (totalActual - totalRequiredToDate) / totalRequiredToDate : 0;
+    const daysRemaining       = today <= end ? daysBetween(today, end) : 0;
     const neededPerDayRemaining = daysRemaining > 0 ? (target - totalActual) / daysRemaining : 0;
 
     return {
@@ -306,212 +351,181 @@
     };
   }
 
-  // ============================================================================
+  // =====================================================
   // Data load
-  // ============================================================================
-  async function loadGoal() {
-    const content = document.getElementById('content');
-    content.innerHTML = '<div class="loading">Loading data…</div>';
+  // =====================================================
+  async function loadGoals() {
+    loading('goals-content');
 
-    // 1. Get config
     const { data: configRow, error: configErr } = await sb
       .from('dashboard_config').select('*').eq('id', 1).single();
     if (configErr) {
-      content.innerHTML = `<div class="empty-state">Couldn't load goal config: ${configErr.message}</div>`;
+      document.getElementById('goals-content').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Couldn't load goal config</div><div class="empty-sub">${configErr.message}</div></div>`;
       return;
     }
 
     const goalConfig = configRow.goal || {};
     const startStr = goalConfig.start_date || '2026-01-01';
-    const endStr = goalConfig.end_date || '2026-12-31';
+    const endStr   = goalConfig.end_date   || '2026-12-31';
 
-    // 2. Get sales totals per day within the goal window
-    // Aggregate in SQL via select? Postgres doesn't expose group-by directly via PostgREST,
-    // so we pull rows + sum in JS. We only need date + revenue.
     const { data: salesRows, error: salesErr } = await sb
       .from('sales_daily')
       .select('date, revenue')
       .gte('date', startStr)
       .lte('date', endStr);
-
     if (salesErr) {
-      content.innerHTML = `<div class="empty-state">Couldn't load sales: ${salesErr.message}</div>`;
+      document.getElementById('goals-content').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Couldn't load sales</div><div class="empty-sub">${salesErr.message}</div></div>`;
       return;
     }
 
     const dailySales = {};
     for (const r of salesRows || []) {
-      // r.date may come back as a Date object or string; normalize
       const key = (r.date instanceof Date) ? toISO(r.date) : String(r.date).slice(0, 10);
       dailySales[key] = (dailySales[key] || 0) + parseFloat(r.revenue || 0);
     }
 
     const result = buildGoalTracker(dailySales, configRow);
-    render(result);
+    renderGoals(result);
   }
 
-  // ============================================================================
-  // Render
-  // ============================================================================
-  function render(g) {
+  // =====================================================
+  // Render — straight port of the original renderGoals
+  // =====================================================
+  let goalChartInst = null;
+
+  function renderGoals(d) {
     document.getElementById('page-sub').textContent =
-      `${formatMoney(g.goal)} target · ${formatDateLong(g.start_date)} → ${formatDateLong(g.end_date)}`;
+      `${fmt(d.goal || 0)} target · ${d.start_date} → ${d.end_date}`;
 
-    if (g.error) {
-      document.getElementById('content').innerHTML = `<div class="empty-state">${g.error}</div>`;
+    if (d.error) {
+      document.getElementById('goals-content').innerHTML =
+        `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">${d.error}</div></div>`;
+      return;
+    }
+    if (d.days_elapsed === 0) {
+      document.getElementById('goals-content').innerHTML = `
+        <div class="empty">
+          <div class="empty-icon">📊</div>
+          <div class="empty-title">No sales data uploaded yet for the goal window</div>
+          <div class="empty-sub">Upload at least one day of sales to see your pace.</div>
+        </div>`;
       return;
     }
 
-    if (g.days_elapsed === 0) {
-      document.getElementById('content').innerHTML = `
-        <div class="empty-state">
-          No sales data uploaded yet for the goal window.<br>
-          Upload at least one day of sales to see your pace.
-        </div>
-      `;
-      return;
-    }
+    const ahead = d.pace_diff >= 0;
+    const paceColor = ahead ? 'var(--green)' : 'var(--red)';
+    const progressPct = Math.min(100, d.pct_of_goal * 100);
 
-    const paceSign = g.pace_diff >= 0 ? 'ahead' : 'behind';
-    const paceClass = g.pace_diff >= 0 ? 'ahead' : 'behind';
-    const paceAbs = Math.abs(g.pace_diff);
-
-    const surplus = g.total_actual - g.total_required_to_date;
-
-    document.getElementById('content').innerHTML = `
-      <!-- Hero -->
-      <div class="hero">
-        <div class="hero-grid">
+    let html = `
+      <div class="card" style="margin-bottom:20px;">
+        <div class="section-hdr">
           <div>
-            <div class="hero-label">Year-to-date revenue</div>
-            <div class="hero-num">${formatMoney(g.total_actual)}</div>
-            <div class="hero-sub">of ${formatMoney(g.goal)} goal · ${formatPct(g.pct_of_goal)}</div>
-            <div class="progress-bar"><div class="fill" style="width: ${Math.min(g.pct_of_goal * 100, 100)}%"></div></div>
-            <div class="progress-labels">
-              <span>${g.days_elapsed} days in</span>
-              <span>${g.days_remaining} days left</span>
+            <div class="section-title">$${(d.goal/1e6).toFixed(1)}M Goal — ${d.start_date} → ${d.end_date}</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:4px;">
+              ${d.days_elapsed} days elapsed · ${d.days_remaining} days remaining
             </div>
           </div>
-          <div>
-            <div class="hero-label">Pace vs. plan</div>
-            <div class="hero-num ${paceClass}">${g.pace_diff >= 0 ? '+' : ''}${formatPct(g.pace_diff)}</div>
-            <div class="hero-sub">
-              ${paceSign === 'ahead'
-                ? `${formatMoney(Math.abs(surplus))} ahead of where you should be`
-                : `${formatMoney(Math.abs(surplus))} behind where you should be`}
-            </div>
+          <div style="text-align:right;">
+            <div style="font-family:'Syne',sans-serif;font-size:28px;font-weight:700;color:${paceColor};">${fmtPn(d.pace_diff)}</div>
+            <div style="font-size:12px;color:var(--muted);">vs required pace</div>
           </div>
         </div>
-      </div>
-
-      <!-- Stats -->
-      <h2>Numbers</h2>
-      <div class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-label">Required per day (avg)</div>
-          <div class="stat-value">${formatMoney(g.daily_required)}</div>
-          <div class="stat-foot">over the full year</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Needed per day (remaining)</div>
-          <div class="stat-value ${g.needed_per_day_remaining > g.daily_required * 1.05 ? 'red' : ''}">${formatMoney(g.needed_per_day_remaining)}</div>
-          <div class="stat-foot">to catch up by ${formatDateLong(g.end_date)}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Should be at by today</div>
-          <div class="stat-value">${formatMoney(g.total_required_to_date)}</div>
-          <div class="stat-foot">${g.days_elapsed} days × ${formatMoney(g.daily_required)}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Average per day so far</div>
-          <div class="stat-value">${formatMoney(g.days_elapsed ? g.total_actual / g.days_elapsed : 0)}</div>
-          <div class="stat-foot">across ${g.days_elapsed} uploaded days</div>
+        <div class="goal-bar-track"><div class="goal-bar-fill" style="width:${progressPct.toFixed(1)}%"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
+          <span>${fmt(d.total_actual)} actual</span>
+          <span>${progressPct.toFixed(1)}% of goal</span>
+          <span>${fmt(d.goal)} target</span>
         </div>
       </div>
 
-      <!-- Timeline chart -->
-      <h2>Cumulative pace</h2>
-      <div class="chart-wrap">
-        <div class="chart-legend">
-          <div class="item"><span class="legend-swatch" style="background: var(--text-dim);"></span> Required pace</div>
-          <div class="item"><span class="legend-swatch" style="background: var(--accent);"></span> Actual</div>
-          <div class="item"><span class="legend-swatch" style="background: var(--yellow); height: 2px;"></span> Today</div>
-        </div>
-        ${renderChart(g)}
+      <div class="goal-stats">
+        ${miniKpi('Total Revenue',          fmt(d.total_actual),                'orange')}
+        ${miniKpi('Required to Date',       fmt(d.total_required_to_date),      'blue')}
+        ${miniKpi('Daily Required (avg)',   fmt(d.daily_required),              'muted')}
+        ${miniKpi('Needed/Day (remaining)', fmt(d.needed_per_day_remaining),
+          d.needed_per_day_remaining <= d.daily_required ? 'green' : 'red')}
+      </div>
+
+      <div class="card" style="margin-bottom:20px;">
+        <div class="card-title">Daily Revenue vs Goal Pace</div>
+        <div class="chart-wrap" style="height:260px"><canvas id="goal-chart"></canvas></div>
+      </div>
+
+      <div class="section-hdr"><div class="section-title">Recent Days</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th class="r">Actual</th>
+              <th class="r">Required</th>
+              <th class="r">Cumulative Actual</th>
+              <th class="r">Cumulative Required</th>
+              <th class="r">Diff</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(d.timeline.filter(r => r.actual !== null).slice(-30).reverse()).map(r => {
+              const diff = r.pct_diff;
+              const dc = diff >= 0 ? 'green' : 'red';
+              return `
+                <tr>
+                  <td class="mono">${r.date}</td>
+                  <td class="r">${fmt(r.actual)}</td>
+                  <td class="r">${fmt(r.required)}</td>
+                  <td class="r">${fmt(r.cumulative_actual)}</td>
+                  <td class="r">${fmt(r.cumulative_required)}</td>
+                  <td class="r" style="color:var(--${dc});">${diff !== null ? fmtPn(diff) : '—'}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
     `;
-  }
 
-  function renderChart(g) {
-    const W = 1100, H = 360, PAD_L = 70, PAD_R = 20, PAD_T = 20, PAD_B = 40;
-    const innerW = W - PAD_L - PAD_R;
-    const innerH = H - PAD_T - PAD_B;
+    document.getElementById('goals-content').innerHTML = html;
 
-    const tl = g.timeline;
-    if (tl.length === 0) return '<div class="empty-state">No data</div>';
+    // Chart
+    setTimeout(() => {
+      const ctx = document.getElementById('goal-chart');
+      if (!ctx) return;
+      if (goalChartInst) goalChartInst.destroy();
+      const tl = d.timeline;
+      const labels   = tl.map(r => r.date.slice(5));
+      const actuals  = tl.map(r => r.actual);
+      const cumActual = tl.map(r => r.cumulative_actual);
+      const cumReq    = tl.map(r => r.cumulative_required);
+      const step      = Math.max(1, Math.floor(labels.length / 12));
+      const dispLabels = labels.map((l, i) => i % step === 0 ? l : '');
 
-    const maxY = Math.max(g.goal, tl[tl.length - 1].cumulative_required) * 1.05;
-    const minY = 0;
-
-    const xFor = i => PAD_L + (i / (tl.length - 1)) * innerW;
-    const yFor = v => PAD_T + innerH - ((v - minY) / (maxY - minY)) * innerH;
-
-    // Required line — full year
-    const reqPath = tl.map((d, i) => `${i === 0 ? 'M' : 'L'} ${xFor(i).toFixed(1)} ${yFor(d.cumulative_required).toFixed(1)}`).join(' ');
-
-    // Actual line — only days with data
-    const actualPts = [];
-    for (let i = 0; i < tl.length; i++) {
-      if (tl[i].cumulative_actual !== null) actualPts.push([i, tl[i].cumulative_actual]);
-    }
-    const actualPath = actualPts.length > 0
-      ? actualPts.map((p, j) => `${j === 0 ? 'M' : 'L'} ${xFor(p[0]).toFixed(1)} ${yFor(p[1]).toFixed(1)}`).join(' ')
-      : '';
-
-    // Today marker
-    const todayStr = todayISO();
-    const todayIdx = tl.findIndex(d => d.date === todayStr);
-    const todayX = todayIdx >= 0 ? xFor(todayIdx) : null;
-
-    // Y-axis ticks (every $1M)
-    const yTicks = [];
-    for (let v = 0; v <= maxY; v += 1000000) yTicks.push(v);
-
-    // X-axis ticks — month starts
-    const monthTicks = [];
-    let lastMonth = -1;
-    for (let i = 0; i < tl.length; i++) {
-      const d = parseISO(tl[i].date);
-      if (d.getUTCMonth() !== lastMonth) {
-        lastMonth = d.getUTCMonth();
-        monthTicks.push({ i, label: d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) });
-      }
-    }
-
-    return `
-      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-        <!-- Y grid + labels -->
-        ${yTicks.map(v => `
-          <line x1="${PAD_L}" x2="${W - PAD_R}" y1="${yFor(v)}" y2="${yFor(v)}" stroke="var(--border)" stroke-width="1" />
-          <text x="${PAD_L - 8}" y="${yFor(v) + 4}" text-anchor="end" font-size="11" fill="var(--text-dim)">$${(v/1000000).toFixed(0)}M</text>
-        `).join('')}
-        <!-- X labels -->
-        ${monthTicks.map(t => `
-          <text x="${xFor(t.i)}" y="${H - PAD_B + 18}" text-anchor="middle" font-size="11" fill="var(--text-dim)">${t.label}</text>
-        `).join('')}
-        <!-- Required line -->
-        <path d="${reqPath}" fill="none" stroke="var(--text-dim)" stroke-width="1.5" stroke-dasharray="4 4" />
-        <!-- Actual line -->
-        ${actualPath ? `<path d="${actualPath}" fill="none" stroke="var(--accent)" stroke-width="2.5" />` : ''}
-        <!-- Today marker -->
-        ${todayX !== null ? `
-          <line x1="${todayX}" x2="${todayX}" y1="${PAD_T}" y2="${H - PAD_B}" stroke="var(--yellow)" stroke-width="1" stroke-dasharray="2 3" opacity="0.7" />
-          <text x="${todayX}" y="${PAD_T - 4}" text-anchor="middle" font-size="10" fill="var(--yellow)">today</text>
-        ` : ''}
-      </svg>
-    `;
+      goalChartInst = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: dispLabels,
+          datasets: [
+            { type: 'bar',  label: 'Daily Revenue',     data: actuals,    backgroundColor: 'rgba(249,115,22,0.4)',                                   yAxisID: 'y'  },
+            { type: 'line', label: 'Cumulative Actual', data: cumActual,  borderColor: '#f97316', borderWidth: 2,   pointRadius: 0, tension: 0.3,    yAxisID: 'y2' },
+            { type: 'line', label: 'Required Pace',    data: cumReq,     borderColor: '#6b7094', borderWidth: 1.5, pointRadius: 0, tension: 0,
+              borderDash: [5,5], yAxisID: 'y2' },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend:  { labels: { color: '#6b7094', font: { size: 11 } } },
+            tooltip: { backgroundColor: '#1c1f2e', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
+          },
+          scales: {
+            x:  { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#6b7094', font: { size: 10 } } },
+            y:  { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#6b7094', font: { size: 10 }, callback: v => fmt(v) }, position: 'left' },
+            y2: { grid: { display: false },                 ticks: { color: '#6b7094', font: { size: 10 }, callback: v => fmt(v) }, position: 'right' }
+          }
+        }
+      });
+    }, 50);
   }
 </script>
-
 </body>
 </html>
