@@ -341,7 +341,10 @@
       for (let i = 0; i < amzFiles.length; i++) {
         document.getElementById('loading-line').textContent = `Reading Amazon file ${i+1}/${amzFiles.length} — ${amzFiles[i].name}…`;
         const rows = await parseAmazonTSV(amzFiles[i].file);
-        amzRows.push(...rows);
+        // Use concat instead of `.push(...rows)` — the spread form passes each
+        // row as a separate function argument and overflows the JS stack on
+        // very large files (~100K+ rows). concat is O(n) and safe.
+        amzRows = amzRows.concat(rows);
       }
 
       // Check required columns
@@ -381,7 +384,9 @@
       for (let i = 0; i < shopFiles.length; i++) {
         document.getElementById('loading-line').textContent = `Reading Shopify file ${i+1}/${shopFiles.length} — ${shopFiles[i].name}…`;
         const rows = await parseShopifyFile(shopFiles[i].file);
-        shopRows.push(...rows);
+        // concat instead of spread-push — Shopify exports can run 100K+ rows
+        // and `arr.push(...bigArr)` overflows the call stack.
+        shopRows = shopRows.concat(rows);
       }
       if (shopRows.length === 0) throw new Error('Shopify files are empty.');
 
