@@ -263,7 +263,7 @@
     return transfer;
   }
 
-  function buildShipment(fbaRows, blbInventoryByShopifySku, salesWindow, latestSalesISO) {
+  function buildShipment(fbaRows, planningRows, blbInventoryByShopifySku, salesWindow, latestSalesISO) {
     const latestDate = latestSalesISO ? parseISO(latestSalesISO) : null;
 
     // Build per-SKU sales maps (only FBA-tagged sales count for shipment logic)
@@ -309,12 +309,24 @@
       invMap.set(String(row.sku || '').toUpperCase(), row);
     }
 
+    // Build Planning lookup. We use Planning's "available" as the on-hand
+    // stock count because it matches what Seller Central displays. The Manage
+    // report's "fulfillable" is used as a fallback when Planning is missing
+    // a SKU (e.g. brand-new SKU not yet in the Planning export).
+    const planningMap = new Map();
+    for (const row of planningRows || []) {
+      const sku = String(row.sku || '').toUpperCase();
+      if (sku) planningMap.set(sku, row);
+    }
+
     // Pass 1: triggers
     const skuRows = [];
     const triggerStyles = new Set();
     for (const [sku, invRow] of invMap.entries()) {
       const shopifySku = stripFba(sku);
-      const inv = invRow.fulfillable || 0;
+      const planRow = planningMap.get(sku);
+      // Per design: effective = Available (from Planning) + Inbound (from Manage)
+      const inv = (planRow && planRow.available != null) ? planRow.available : (invRow.fulfillable || 0);
       const inbound = (invRow.inbound_working || 0) + (invRow.inbound_shipped || 0) + (invRow.inbound_receiving || 0);
       const effective = inv + inbound;
       const u7 = getShipped(sku, 7);
@@ -437,9 +449,15 @@
           [['date', 'gte', toISO(startDate)], ['date', 'lte', latestSalesDate]]);
       }
 
-      // FBA inventory
+      // FBA inventory — both reports.
+      // Manage report has the freshest inbound (used for "Inbound" math).
+      // Planning report has the "available" number that matches Seller Central
+      // (used as the operational on-hand stock, per shipment-builder design:
+      //  effective = Available + Inbound, excluding Reserved).
       const fba = await fetchPaged('fba_inventory_snapshot',
         'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving');
+      const planning = await fetchPaged('fba_planning_snapshot',
+        'sku, raw_sku, available');
 
       // BLB inventory — only HQ + eCommerce/Wholesale channels
       const blb = await fetchPaged('blb_inventory_snapshot',
@@ -459,7 +477,7 @@
         blbIndex.set(sku, entry);
       }
 
-      const result = buildShipment(fba, blbIndex, salesWindow, latestSalesDate);
+      const result = buildShipment(fba, planning, blbIndex, salesWindow, latestSalesDate);
       window._shipData = result;
       window._shipRows = result.main.map(r => ({ ...r }));
       renderShipment();
