@@ -6,6 +6,7 @@
 <title>Burlebo — Product Launch Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/auth.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -120,6 +121,21 @@
   }
   .role-btn.active-coy { background: var(--coy-bg); color: var(--coy); font-weight: 500; }
   .role-btn.active-designer { background: var(--designer-bg); color: var(--designer); font-weight: 500; }
+
+  /* Role pill — managed by auth.js, click to log out */
+  .role-pill {
+    display: inline-flex; align-items: center;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    background: var(--surface2); color: var(--text2);
+    border: 1px solid var(--border);
+    transition: opacity 0.15s;
+  }
+  .role-pill:hover { opacity: 0.82; }
+  .role-pill.coy      { background: var(--coy-bg);      color: var(--coy);      border-color: var(--coy-border); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); border-color: var(--designer-border); }
 
   /* APP BODY */
   .app-body {
@@ -715,34 +731,6 @@
   <div class="loading-spinner"></div>
 </div>
 
-<div class="modal-overlay" id="role-modal" style="display:none;">
-  <div class="modal">
-    <div class="modal-title">Who are you?</div>
-    <div class="modal-sub">Choose your role to get started.</div>
-    <div class="modal-options">
-      <button class="modal-option opt-coy" onclick="promptCoyPassword()">
-        <div class="modal-option-icon coy">C</div>
-        <div>
-          <div class="modal-option-name">Coy</div>
-          <div class="modal-option-desc">Upload steps + copywriting guide</div>
-        </div>
-      </button>
-      <button class="modal-option opt-designer" onclick="selectRole('designer')">
-        <div class="modal-option-icon designer">D</div>
-        <div>
-          <div class="modal-option-name">Designer</div>
-          <div class="modal-option-desc">A+ content + PDP images</div>
-        </div>
-      </button>
-    </div>
-    <div id="pw-field" style="display:none;margin-top:16px;">
-      <input id="coy-pw" type="password" placeholder="Enter password" style="width:100%;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;margin-bottom:8px;" onkeydown="if(event.key==='Enter')checkCoyPassword()" />
-      <div id="pw-error" style="display:none;font-size:12px;color:var(--red);margin-bottom:8px;">Incorrect password.</div>
-      <button class="btn btn-primary" style="width:100%;" onclick="checkCoyPassword()">Continue as Coy</button>
-    </div>
-  </div>
-</div>
-
 <div id="app" style="display:none;">
   <header class="header">
     <div class="header-logo">Burlebo <span>/</span> Launch Tracker</div>
@@ -752,10 +740,7 @@
         <div class="sync-dot" id="sync-dot"></div>
         <span id="sync-text">Synced</span>
       </div>
-      <div class="role-switcher">
-        <button class="role-btn" id="btn-coy" onclick="switchRole('coy')">Coy</button>
-        <button class="role-btn" id="btn-designer" onclick="switchRole('designer')">Designer</button>
-      </div>
+      <span class="role-pill" id="role-pill" title="Click to switch role"></span>
     </div>
   </header>
 
@@ -907,47 +892,29 @@ async function deleteProduct(id) {
 }
 
 function promptCoyPassword() {
-  document.getElementById('pw-field').style.display = 'block';
-  document.getElementById('coy-pw').focus();
+  // Legacy entry point — no longer used; auth.js handles role selection.
 }
 
 function checkCoyPassword() {
-  const val = document.getElementById('coy-pw').value;
-  if (val === 'coyneedham') {
-    document.getElementById('pw-error').style.display = 'none';
-    selectRole('coy');
-  } else {
-    document.getElementById('pw-error').style.display = 'block';
-    document.getElementById('coy-pw').value = '';
-    document.getElementById('coy-pw').focus();
-  }
+  // Legacy entry point — no longer used; auth.js handles role selection.
 }
 
 function selectRole(r) {
+  // Legacy entry point retained as a safety net; auth.js drives role state.
   role = r;
-  document.getElementById('role-modal').style.display = 'none';
-  document.getElementById('pw-field').style.display = 'none';
   document.getElementById('add-bar').style.display = role === 'coy' ? 'flex' : 'none';
-  updateRoleUI();
   render();
 }
 
 function switchRole(r) {
-  if (r === 'coy') {
-    // Re-show modal with password prompt
-    document.getElementById('role-modal').style.display = 'flex';
-    promptCoyPassword();
-    return;
-  }
-  role = r;
-  document.getElementById('add-bar').style.display = 'none';
-  updateRoleUI();
-  render();
+  // Old in-tracker role switcher. Auth.js now handles role changes via the
+  // role pill (click → logout → re-pick). Keep as no-op for safety.
+  if (window.AuthApp) window.AuthApp.logout();
 }
 
 function updateRoleUI() {
-  document.getElementById('btn-coy').className = 'role-btn' + (role === 'coy' ? ' active-coy' : '');
-  document.getElementById('btn-designer').className = 'role-btn' + (role === 'designer' ? ' active-designer' : '');
+  // No-op — the old role-switcher buttons are gone, replaced by the role pill
+  // which auth.js styles on completeAuth().
 }
 
 function sectionProgress(sectionId) {
@@ -1993,26 +1960,35 @@ async function confirmImport() {
 
 // ── END EXCEL IMPORT ──────────────────────────────────────────
 
+// A promise that resolves once initial data has loaded. onAuthReady waits on
+// this so render() is never called against empty state.
+let dataReady;
+
 async function init() {
-  try {
-    await loadData();
-    await loadGroupAssets();
-  } catch(e) {
-    console.error('Load error:', e);
-  }
+  dataReady = (async () => {
+    try {
+      await loadData();
+      await loadGroupAssets();
+    } catch(e) {
+      console.error('Load error:', e);
+    }
+  })();
+
+  await dataReady;
 
   document.getElementById('loading').style.display = 'none';
+  // Reveal the app so auth.js can position its role pill into the header.
+  // We don't render() yet — that happens once auth.js fires onAuthReady().
   document.getElementById('app').style.display = 'block';
-  document.getElementById('role-modal').style.display = 'flex';
-  updateRoleUI();
-  render();
 
   sb.channel('tasks-changes')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, async (payload) => {
       if (payload.new.id === 'state') taskState = payload.new.data || {};
       if (payload.new.id === 'products') products = payload.new.data || [];
       if (payload.new.id === 'group_assets') groupAssets = payload.new.data || {};
-      render();
+      // Don't render until auth has completed, otherwise role-conditional
+      // rendering would crash with role = null.
+      if (role) render();
       setSyncStatus('synced', 'Synced');
     })
     .subscribe();
@@ -2022,6 +1998,17 @@ async function init() {
     if (e.key === 'Enter') addProduct();
   });
 }
+
+// Called by auth.js once the user is authenticated and allowed on this page.
+window.onAuthReady = async function (r) {
+  role = r;
+  // Wait for the initial data load to finish before first render. If auth
+  // fires before data, we'd otherwise render nothing.
+  if (dataReady) { try { await dataReady; } catch {} }
+  const addBar = document.getElementById('add-bar');
+  if (addBar) addBar.style.display = (role === 'coy') ? 'flex' : 'none';
+  render();
+};
 
 init();
 
