@@ -386,12 +386,20 @@
       for (const sku of sortedSkus) {
         const invRow = invMap.get(sku) || {};
         const planRow = planningMap.get(sku);
-        // "FBA Stock" column shows whichever is most accurate:
-        //   - Planning's "available" if we have it (matches Seller Central)
-        //   - else fall back to Manage's "fulfillable"
-        const inv = (planRow && planRow.available != null)
-          ? planRow.available
-          : (invRow.fulfillable || 0);
+        // Inbound — from Manage report (updates faster than Planning).
+        const inbound = (invRow.inbound_working || 0)
+                      + (invRow.inbound_shipped || 0)
+                      + (invRow.inbound_receiving || 0);
+        // FBA Stock formula (per design):
+        //   on_hand + inbound - reserved
+        // i.e., total physical-at-Amazon + en-route - already-promised.
+        // On-hand and Reserved come from Planning report (matches Seller Central);
+        // fall back to Manage values if the SKU isn't in Planning yet.
+        const onHand   = (planRow && planRow.on_hand   != null) ? planRow.on_hand
+                       : (invRow.fulfillable || 0);
+        const reserved = (planRow && planRow.reserved  != null) ? planRow.reserved
+                       : (invRow.reserved || 0);
+        const inv = onHand + inbound - reserved;
         totalInv += inv;
         const u7  = getShipped(sku, 7);
         const u30 = getShipped(sku, 30);
@@ -407,12 +415,10 @@
         groupRows.push({
           sku,
           product_name: invRow.product_name || '',
-          fulfillable: inv,
-          // Reserved: prefer Planning's number; fall back to Manage.
-          reserved: (planRow && planRow.reserved != null) ? planRow.reserved : (invRow.reserved || 0),
+          fulfillable: inv,    // displayed as "FBA Stock" — already the combined formula
+          reserved,
           unsellable: invRow.unsellable || 0,
-          // Inbound: keep using Manage report — it updates fastest.
-          inbound: (invRow.inbound_working || 0) + (invRow.inbound_shipped || 0) + (invRow.inbound_receiving || 0),
+          inbound,             // still shown separately for visibility
           u7, u30, u60, u90,
           velocity: Math.round(velocity * 1000) / 1000,
           days_supply: daysSupply,
