@@ -178,6 +178,38 @@
   .badge.done  { background: rgba(74, 222, 128, 0.15); color: var(--green); }
   .badge.error { background: rgba(248, 113, 113, 0.15); color: var(--red); }
 
+  /* Bulk upload table */
+  .bulk-table {
+    width: 100%; border-collapse: collapse;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; margin-top: 16px;
+    font-size: 13px;
+  }
+  .bulk-table th, .bulk-table td {
+    padding: 10px 14px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .bulk-table th {
+    font-size: 11px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    background: var(--panel-2);
+  }
+  .bulk-table tr:last-child td { border-bottom: none; }
+  .bulk-table td.file { color: var(--text-dim); font-size: 12px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bulk-table td.num  { font-variant-numeric: tabular-nums; }
+  .bulk-summary {
+    display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 18px; margin-top: 16px;
+  }
+  .bulk-summary .stat { display: flex; flex-direction: column; gap: 2px; }
+  .bulk-summary .stat .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .bulk-summary .stat .val { font-size: 17px; font-weight: 600; }
+  .bulk-summary .actions { margin-left: auto; display: flex; gap: 10px; }
+  .badge.pending { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+  .badge.uploading { background: rgba(56, 189, 248, 0.15); color: var(--blue); }
+  .badge.skipped { background: rgba(138, 146, 160, 0.15); color: var(--text-dim); }
+
   /* Role modal — same as dashboard.html */
   .modal-overlay {
     position: fixed; inset: 0;
@@ -271,6 +303,15 @@
       <input type="file" id="file-input" accept=".csv">
     </div>
     <div id="preview-container"></div>
+
+    <h2 style="margin-top: 32px;">Bulk historical upload</h2>
+    <div class="dropzone" id="bulk-dropzone" onclick="document.getElementById('bulk-file-input').click()">
+      <div class="icon">≡</div>
+      <div class="big">Drop many Sales/Ad CSVs here, or click to choose</div>
+      <div class="small">Filename must be <code>Daily_Sales_Data_MM-DD-YY.csv</code> or <code>Daily_AD_Data_MM-DD-YY.csv</code></div>
+      <input type="file" id="bulk-file-input" accept=".csv" multiple>
+    </div>
+    <div id="bulk-preview-container"></div>
 
     <h2 style="margin-top: 32px;">Recent uploads</h2>
     <div id="uploads-list"></div>
@@ -495,6 +536,21 @@
     input.addEventListener('change', e => {
       if (e.target.files.length > 0) handleFile(e.target.files[0]);
       input.value = '';
+    });
+
+    // Bulk historical dropzone
+    const bdz = document.getElementById('bulk-dropzone');
+    const binput = document.getElementById('bulk-file-input');
+    bdz.addEventListener('dragover', e => { e.preventDefault(); bdz.classList.add('drag'); });
+    bdz.addEventListener('dragleave', () => bdz.classList.remove('drag'));
+    bdz.addEventListener('drop', e => {
+      e.preventDefault();
+      bdz.classList.remove('drag');
+      if (e.dataTransfer.files.length > 0) handleBulkFiles(Array.from(e.dataTransfer.files));
+    });
+    binput.addEventListener('change', e => {
+      if (e.target.files.length > 0) handleBulkFiles(Array.from(e.target.files));
+      binput.value = '';
     });
   }
 
@@ -883,6 +939,197 @@
     const toInsert = Array.from(map.values());
     const inserted = await batchInsert('blb_inventory_snapshot', toInsert, 1000, (done, total) => setProgress(8 + done/total*92));
     return { inserted, skipped };
+  }
+
+  // ============================================================================
+  // Bulk historical upload
+  // ============================================================================
+  // Parses filenames like:
+  //   Daily_Sales_Data_05-21-26.csv -> { type: 'sales', date: '2026-05-21' }
+  //   Daily_AD_Data_05-21-26.csv    -> { type: 'ad',    date: '2026-05-21' }
+  // YY is interpreted as 20YY.
+  function parseBulkFilename(name) {
+    const m = name.match(/^Daily_(Sales|AD)_Data_(\d{2})-(\d{2})-(\d{2})\.csv$/i);
+    if (!m) return null;
+    const type = m[1].toLowerCase() === 'sales' ? 'sales' : 'ad';
+    const mo = parseInt(m[2], 10);
+    const da = parseInt(m[3], 10);
+    const yr = 2000 + parseInt(m[4], 10);
+    if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+    const iso = `${yr}-${String(mo).padStart(2,'0')}-${String(da).padStart(2,'0')}`;
+    return { type, date: iso };
+  }
+
+  let bulkQueue = [];  // [{ id, file, type, date, status, rows, inserted, skipped, error }]
+  let bulkRunning = false;
+
+  async function handleBulkFiles(files) {
+    // Build queue entries with filename-derived metadata
+    const entries = files.map((f, i) => {
+      const meta = parseBulkFilename(f.name);
+      return {
+        id: `b${Date.now()}_${i}`,
+        file: f,
+        type: meta?.type || null,
+        date: meta?.date || null,
+        status: meta ? 'pending' : 'skipped',
+        rows: null,
+        inserted: 0,
+        skipped: 0,
+        error: meta ? null : 'Filename does not match pattern',
+      };
+    });
+
+    // De-dupe within this batch: if the same (type,date) appears twice,
+    // keep the LAST one (matches "newest wins") and mark earlier ones skipped.
+    const seen = new Map();
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.status === 'skipped') continue;
+      const key = `${e.type}|${e.date}`;
+      if (seen.has(key)) {
+        e.status = 'skipped';
+        e.error = 'Duplicate of later file in batch';
+      } else {
+        seen.set(key, e.id);
+      }
+    }
+
+    bulkQueue = entries;
+    renderBulkPreview();
+  }
+
+  function renderBulkPreview() {
+    const container = document.getElementById('bulk-preview-container');
+    if (bulkQueue.length === 0) { container.innerHTML = ''; return; }
+
+    const valid     = bulkQueue.filter(e => e.status !== 'skipped').length;
+    const skipped   = bulkQueue.filter(e => e.status === 'skipped').length;
+    const done      = bulkQueue.filter(e => e.status === 'done').length;
+    const errored   = bulkQueue.filter(e => e.status === 'error').length;
+    const remaining = bulkQueue.filter(e => e.status === 'pending' || e.status === 'uploading').length;
+
+    const typeLabels = { sales: 'Sales', ad: 'Ad' };
+    const statusBadge = (s) => {
+      const label = { pending:'queued', uploading:'uploading', done:'done', error:'error', skipped:'skipped' }[s] || s;
+      return `<span class="badge ${s}">${label}</span>`;
+    };
+
+    container.innerHTML = `
+      <div class="bulk-summary">
+        <div class="stat"><span class="label">Files</span><span class="val">${bulkQueue.length}</span></div>
+        <div class="stat"><span class="label">Ready</span><span class="val" style="color:var(--green)">${valid}</span></div>
+        <div class="stat"><span class="label">Skipped</span><span class="val" style="color:var(--text-dim)">${skipped}</span></div>
+        <div class="stat"><span class="label">Done</span><span class="val" style="color:var(--green)">${done}</span></div>
+        <div class="stat"><span class="label">Errors</span><span class="val" style="color:var(--red)">${errored}</span></div>
+        <div class="actions">
+          <button class="btn ghost" onclick="cancelBulk()" ${bulkRunning ? 'disabled' : ''}>Clear</button>
+          <button class="btn primary" id="bulk-upload-btn"
+                  onclick="runBulkUpload()"
+                  ${bulkRunning || remaining === 0 ? 'disabled' : ''}>
+            ${bulkRunning ? `Uploading… (${done + errored}/${valid})` : `Upload ${remaining} file${remaining===1?'':'s'}`}
+          </button>
+        </div>
+      </div>
+      <table class="bulk-table">
+        <thead><tr>
+          <th>File</th><th>Type</th><th>Date</th><th>Rows</th><th>Status</th><th>Detail</th>
+        </tr></thead>
+        <tbody>
+          ${bulkQueue.map(e => `
+            <tr>
+              <td class="file" title="${e.file.name}">${e.file.name}</td>
+              <td>${e.type ? `<span class="badge ${e.type}">${typeLabels[e.type]}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+              <td>${e.date ? formatDate(e.date) : '<span style="color:var(--text-dim)">—</span>'}</td>
+              <td class="num">${e.rows != null ? e.rows.toLocaleString() : '—'}</td>
+              <td>${statusBadge(e.status)}</td>
+              <td style="color:var(--text-dim); font-size:12px;">${
+                e.error ? e.error :
+                e.status === 'done' ? `${e.inserted.toLocaleString()} inserted${e.skipped ? ` · ${e.skipped} bad rows` : ''}` :
+                ''
+              }</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function cancelBulk() {
+    if (bulkRunning) return;
+    bulkQueue = [];
+    document.getElementById('bulk-preview-container').innerHTML = '';
+  }
+
+  // Parse a single file into rows via PapaParse (Promise wrapper)
+  function parseFileRows(file) {
+    return new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => resolve(results.data),
+        error: (err) => reject(err),
+      });
+    });
+  }
+
+  async function runBulkUpload() {
+    if (bulkRunning) return;
+    bulkRunning = true;
+    renderBulkPreview();
+
+    for (const e of bulkQueue) {
+      if (e.status !== 'pending') continue;
+      e.status = 'uploading';
+      renderBulkPreview();
+
+      try {
+        // 1) Parse rows
+        const rows = await parseFileRows(e.file);
+        e.rows = rows.length;
+
+        // 2) Sanity-check headers match the declared type (catch a renamed-by-mistake file)
+        const headers = Object.keys(rows[0] || {});
+        const detected = detectFileType(headers);
+        if (detected !== e.type) {
+          throw new Error(
+            detected
+              ? `CSV headers look like "${detected}", not "${e.type}" (from filename)`
+              : `CSV headers don't match a known type`
+          );
+        }
+
+        // 3) Create uploads audit row
+        const { data: uploadRow, error: upErr } = await sb.from('uploads').insert({
+          filename: e.file.name,
+          file_type: e.type,
+          detected_date: e.date,
+          row_count: rows.length,
+          status: 'pending',
+        }).select().single();
+        if (upErr) throw new Error('audit row: ' + upErr.message);
+        const uploadId = uploadRow.id;
+
+        // 4) Reuse the same per-type writers as single upload (delete-then-insert per date)
+        let result;
+        if (e.type === 'sales') result = await uploadSales(rows, e.date, uploadId);
+        else                    result = await uploadAds(rows, e.date, uploadId);
+
+        await sb.from('uploads').update({ status: 'done', row_count: result.inserted }).eq('id', uploadId);
+
+        e.inserted = result.inserted;
+        e.skipped  = result.skipped;
+        e.status   = 'done';
+      } catch (err) {
+        e.status = 'error';
+        e.error = err.message || String(err);
+      }
+      renderBulkPreview();
+    }
+
+    bulkRunning = false;
+    renderBulkPreview();
+    loadRecentUploads();
   }
 
   // ============================================================================
