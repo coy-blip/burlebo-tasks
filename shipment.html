@@ -441,11 +441,15 @@
   // Data load
   // ============================================================================
   // Fetches all rows from a Supabase table in pages of 1000 (PostgREST's
-  // default cap). Robust to transient network errors and Supabase cold-starts:
+  // default cap). Robust to transient errors AND stable across calls:
   //   - retries each page up to 3 times if `error` is non-null or `data` is null
-  //   - throws if all retries fail (so the caller can show an error instead
-  //     of silently rendering a wrong number)
-  async function fetchPaged(table, columns, filters = []) {
+  //   - requires an `orderBy` arg (defaults to "id") so pagination is
+  //     deterministic. Without an explicit ORDER BY, PostgreSQL is free to
+  //     return rows in different orders across calls — which produced
+  //     overlapping/missing rows between page fetches and is what caused
+  //     "first click vs second click" to differ on the shipment page.
+  //   - throws if all retries fail
+  async function fetchPaged(table, columns, filters = [], orderBy = 'id') {
     const all = [];
     let from = 0;
     const page = 1000;
@@ -455,15 +459,13 @@
       for (let attempt = 0; attempt < 3; attempt++) {
         let q = sb.from(table).select(columns);
         for (const [k, op, v] of filters) q = q[op](k, v);
-        q = q.range(from, from + page - 1);
+        q = q.order(orderBy, { ascending: true }).range(from, from + page - 1);
         const { data, error } = await q;
         if (error) {
           lastErr = error;
-          // Brief backoff before retry
           await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
           continue;
         }
-        // data === null shouldn't happen without error, but guard for it
         if (data == null) {
           lastErr = new Error('Null response from ' + table);
           await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
@@ -476,7 +478,7 @@
         throw new Error(`fetchPaged failed on ${table} at offset ${from}: ${lastErr ? lastErr.message : 'unknown error'}`);
       }
       if (pageData.length === 0) break;
-      for (const row of pageData) all.push(row);  // avoid spread overflow on large pages
+      for (const row of pageData) all.push(row);
       if (pageData.length < page) break;
       from += page;
     }
