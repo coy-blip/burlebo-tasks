@@ -10,6 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/auth.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
@@ -172,11 +173,11 @@
     background: var(--panel-2);
     color: var(--text-dim);
   }
-  .badge.sales        { background: rgba(255, 107, 53, 0.15); color: var(--accent); }
-  .badge.ad           { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
-  .badge.fba          { background: rgba(74, 222, 128, 0.15);  color: var(--green); }
-  .badge.fba_planning { background: rgba(251, 191, 36, 0.15);  color: var(--yellow); }
-  .badge.blb          { background: rgba(56, 189, 248, 0.15);  color: var(--blue); }
+  .badge.sales         { background: rgba(255, 107, 53, 0.15); color: var(--accent); }
+  .badge.ad            { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
+  .badge.fba           { background: rgba(74, 222, 128, 0.15);  color: var(--green); }
+  .badge.shipment_sent { background: rgba(251, 191, 36, 0.15);  color: var(--yellow); }
+  .badge.blb           { background: rgba(56, 189, 248, 0.15);  color: var(--blue); }
   .badge.done  { background: rgba(74, 222, 128, 0.15); color: var(--green); }
   .badge.error { background: rgba(248, 113, 113, 0.15); color: var(--red); }
 
@@ -280,8 +281,8 @@
     <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
       <div class="icon">↑</div>
       <div class="big">Drag a CSV here, or click to choose</div>
-      <div class="small">Sales · Ads · FBA Inventory · FBA Planning · BURLEBO Inventory</div>
-      <input type="file" id="file-input" accept=".csv">
+      <div class="small">Sales · Ads · FBA Inventory · BURLEBO Inventory · Shipment Sent (XLSX)</div>
+      <input type="file" id="file-input" accept=".csv,.xlsx,.xls">
     </div>
     <div id="preview-container"></div>
 
@@ -369,19 +370,18 @@
     if (hset.has('date range') && (hset.has('advertised product sku') || hset.has('advertised sku'))) {
       return 'ad';
     }
-    // FBA Inventory Planning report (the "restock" / strategic view).
-    // Detect this BEFORE the Manage FBA check because Planning has the more
-    // operationally useful numbers ("available" matches Seller Central).
+    // FBA Inventory (Planning Report). "Inventory Supply at FBA" is the
+    // source-of-truth column for FBA stock.
     if (hset.has('inventory supply at fba') && hset.has('total reserved quantity')) {
-      return 'fba_planning';
-    }
-    // Manage FBA Inventory report (real-time, fast inbound updates).
-    if (hset.has('afn-fulfillable-quantity') || hset.has('afn-total-quantity')) {
       return 'fba';
     }
     // BURLEBO inventory: distinctive columns
     if (hset.has('channel') && hset.has('location') && hset.has('on hand available')) {
       return 'blb';
+    }
+    // Exported shipment file (XLSX, but its sheet-to-json will surface these headers).
+    if (hset.has('amazon sku') && hset.has('shopify sku') && hset.has('units needed for 90 day supply')) {
+      return 'shipment_sent';
     }
     return null;
   }
@@ -507,6 +507,28 @@
       </div>
     `;
 
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+
+    if (ext === 'xlsx' || ext === 'xls') {
+      try {
+        const rows = await parseXlsxFile(file);
+        if (!rows.length) throw new Error('XLSX has no data rows');
+        const headers = Object.keys(rows[0] || {});
+        const type = detectFileType(headers);
+        if (!type) {
+          showDetectError(container, file);
+          return;
+        }
+        currentType = type;
+        currentRows = rows;
+        showPreview(type, file, rows);
+      } catch (err) {
+        container.innerHTML = `<div class="preview"><h3>Parse error</h3><div class="status err">${err.message}</div></div>`;
+      }
+      return;
+    }
+
+    // CSV (default)
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -514,14 +536,7 @@
         const headers = results.meta.fields || [];
         const type = detectFileType(headers);
         if (!type) {
-          container.innerHTML = `
-            <div class="preview">
-              <h3>Couldn't detect file type</h3>
-              <div class="sub">${file.name} — headers don't match any of the 4 known types.</div>
-              <div class="status err">Expected one of: Sales / Ad / FBA Inventory / BURLEBO Inventory.</div>
-              <button class="btn ghost" style="margin-top:12px" onclick="document.getElementById('preview-container').innerHTML=''">Dismiss</button>
-            </div>
-          `;
+          showDetectError(container, file);
           return;
         }
         currentType = type;
@@ -534,14 +549,64 @@
     });
   }
 
+  function showDetectError(container, file) {
+    container.innerHTML = `
+      <div class="preview">
+        <h3>Couldn't detect file type</h3>
+        <div class="sub">${file.name} — headers don't match any known type.</div>
+        <div class="status err">Expected: Sales · Ad · FBA Inventory · BURLEBO Inventory · Shipment Sent (exported XLSX)</div>
+        <button class="btn ghost" style="margin-top:12px" onclick="document.getElementById('preview-container').innerHTML=''">Dismiss</button>
+      </div>
+    `;
+  }
+
+  // Parse an XLSX file into a list of row objects (one per data row).
+  // For Burlebo shipment exports the headers live on row 5 (rows 1-2 are a
+  // title block, 3-4 are blank). We auto-detect that by looking for a header
+  // row containing "Amazon SKU". For any other XLSX, the first non-empty
+  // row is treated as the header row.
+  async function parseXlsxFile(file) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    // Pull as a 2D array first so we can find the header row
+    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: '' });
+    if (!aoa || aoa.length === 0) return [];
+    let headerIdx = 0;
+    for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+      const row = aoa[i] || [];
+      // header row is the first one with multiple non-empty string cells
+      const nonEmpty = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '');
+      if (nonEmpty.length >= 2) {
+        headerIdx = i;
+        break;
+      }
+    }
+    const headers = (aoa[headerIdx] || []).map(h => String(h || '').trim());
+    const out = [];
+    for (let i = headerIdx + 1; i < aoa.length; i++) {
+      const row = aoa[i] || [];
+      const obj = {};
+      let anyVal = false;
+      for (let c = 0; c < headers.length; c++) {
+        if (!headers[c]) continue;
+        const v = row[c];
+        if (v !== '' && v != null) anyVal = true;
+        obj[headers[c]] = v == null ? '' : v;
+      }
+      if (anyVal) out.push(obj);
+    }
+    return out;
+  }
+
   function showPreview(type, file, rows) {
     const container = document.getElementById('preview-container');
     const typeLabels = {
-      sales:        { title: 'Daily Sales',                    badge: 'sales',        desc: `${rows.length} SKU rows` },
-      ad:           { title: 'Daily Ads',                      badge: 'ad',           desc: `${rows.length} ad rows` },
-      fba:          { title: 'FBA Inventory snapshot (Manage)', badge: 'fba',          desc: `${rows.length} SKUs — replaces previous snapshot` },
-      fba_planning: { title: 'FBA Planning snapshot',          badge: 'fba_planning', desc: `${rows.length} SKUs — replaces previous Planning snapshot` },
-      blb:          { title: 'BURLEBO Inventory snapshot',     badge: 'blb',          desc: `${rows.length} rows across channels/locations — replaces previous snapshot` },
+      sales:         { title: 'Daily Sales',                    badge: 'sales',         desc: `${rows.length} SKU rows` },
+      ad:            { title: 'Daily Ads',                      badge: 'ad',            desc: `${rows.length} ad rows` },
+      fba:           { title: 'FBA Inventory snapshot',         badge: 'fba',           desc: `${rows.length} SKUs — replaces previous snapshot` },
+      blb:           { title: 'BURLEBO Inventory snapshot',     badge: 'blb',           desc: `${rows.length} rows across channels/locations — replaces previous snapshot` },
+      shipment_sent: { title: 'Shipment Sent to FBA',           badge: 'shipment_sent', desc: `${rows.length} SKUs marked as in-flight for 48 hours` },
     };
     const t = typeLabels[type];
 
@@ -621,14 +686,14 @@
       const { count } = await sb.from('ad_daily').select('*', { count: 'exact', head: true }).eq('date', targetDate);
       existingCount = count ?? 0;
     } else if (currentType === 'fba') {
-      const { count } = await sb.from('fba_inventory_snapshot').select('*', { count: 'exact', head: true });
-      existingCount = count ?? 0;
-    } else if (currentType === 'fba_planning') {
       const { count } = await sb.from('fba_planning_snapshot').select('*', { count: 'exact', head: true });
       existingCount = count ?? 0;
     } else if (currentType === 'blb') {
       const { count } = await sb.from('blb_inventory_snapshot').select('*', { count: 'exact', head: true });
       existingCount = count ?? 0;
+    } else if (currentType === 'shipment_sent') {
+      // Each upload is its own record — no overwrite logic; just append.
+      existingCount = 0;
     }
 
     if (existingCount > 0) {
@@ -661,11 +726,11 @@
 
     try {
       let result;
-      if (currentType === 'sales')             result = await uploadSales(currentRows, targetDate, uploadId);
-      else if (currentType === 'ad')           result = await uploadAds(currentRows, targetDate, uploadId);
-      else if (currentType === 'fba')          result = await uploadFba(currentRows, uploadId);
-      else if (currentType === 'fba_planning') result = await uploadFbaPlanning(currentRows, uploadId);
-      else if (currentType === 'blb')          result = await uploadBlb(currentRows, uploadId);
+      if (currentType === 'sales')              result = await uploadSales(currentRows, targetDate, uploadId);
+      else if (currentType === 'ad')            result = await uploadAds(currentRows, targetDate, uploadId);
+      else if (currentType === 'fba')           result = await uploadFbaPlanning(currentRows, uploadId);
+      else if (currentType === 'blb')           result = await uploadBlb(currentRows, uploadId);
+      else if (currentType === 'shipment_sent') result = await uploadShipmentSent(currentRows, currentFile.name, uploadId);
 
       await sb.from('uploads').update({ status: 'done', row_count: result.inserted }).eq('id', uploadId);
 
@@ -791,44 +856,10 @@
     return { inserted, skipped };
   }
 
-  // ---- FBA snapshot upload ----
-  async function uploadFba(rows, uploadId) {
-    // Wipe ALL previous FBA snapshot rows (we only keep the latest)
-    setProgress(5);
-    await sb.from('fba_inventory_snapshot').delete().gte('id', 0);
-    setProgress(15);
-
-    const today = new Date().toISOString().slice(0, 10);
-    const toInsert = [];
-    let skipped = 0;
-    for (const r of rows) {
-      const rawSku = (r['sku'] || r['SKU'] || '').trim();
-      if (!rawSku) { skipped++; continue; }
-      const { sku } = cleanSku(rawSku);
-
-      toInsert.push({
-        snapshot_date: today,
-        sku, raw_sku: rawSku,
-        asin: r['asin'] || r['ASIN'] || '',
-        product_name: r['product-name'] || r['Product Name'] || '',
-        price: parseNumber(r['your-price']),
-        fulfillable: Math.round(parseNumber(r['afn-fulfillable-quantity'])),
-        unsellable:  Math.round(parseNumber(r['afn-unsellable-quantity'])),
-        reserved:    Math.round(parseNumber(r['afn-reserved-quantity'])),
-        total:       Math.round(parseNumber(r['afn-total-quantity'])),
-        inbound_working:   Math.round(parseNumber(r['afn-inbound-working-quantity'])),
-        inbound_shipped:   Math.round(parseNumber(r['afn-inbound-shipped-quantity'])),
-        inbound_receiving: Math.round(parseNumber(r['afn-inbound-receiving-quantity'])),
-        upload_id: uploadId,
-      });
-    }
-    const inserted = await batchInsert('fba_inventory_snapshot', toInsert, 1000, (done, total) => setProgress(15 + done/total*85));
-    return { inserted, skipped };
-  }
-
-  // ---- FBA Inventory Planning snapshot upload ----
-  // Stored in its own table so the two reports can be uploaded independently
-  // and joined on SKU at read time. Wipe-and-replace like the Manage snapshot.
+  // ---- FBA Inventory snapshot upload (Planning Report) ----
+  // The Planning Report is now the single source of truth for FBA stock.
+  // "Inventory Supply at FBA" = total FBA units (inbound + available - reserved).
+  // Wipe-and-replace — only the latest snapshot is kept.
   async function uploadFbaPlanning(rows, uploadId) {
     setProgress(5);
     await sb.from('fba_planning_snapshot').delete().gte('id', 0);
@@ -842,8 +873,6 @@
       if (!rawSku) { skipped++; continue; }
       const { sku } = cleanSku(rawSku);
 
-      // Planning report uses lowercase, dash-separated headers like
-      // "Inventory Supply at FBA" (mixed-case for the newer cols). Be lenient.
       const get = (key) => r[key] != null ? r[key] : '';
 
       toInsert.push({
@@ -864,6 +893,39 @@
       });
     }
     const inserted = await batchInsert('fba_planning_snapshot', toInsert, 1000, (done, total) => setProgress(15 + done/total*85));
+    return { inserted, skipped };
+  }
+
+  // ---- Shipment Sent upload ----
+  // Records the units from an exported shipment file as "in flight." The
+  // shipment builder adds these units onto the FBA stock numbers when
+  // calculating recommendations, so the same SKUs don't get shipped twice
+  // while the Planning Report catches up (~24h lag).
+  // Rows older than 48 hours expire and are ignored by the builder.
+  // Each upload is appended as its own shipment_id — never overwritten.
+  async function uploadShipmentSent(rows, filename, uploadId) {
+    setProgress(5);
+    // Generate a shipment_id from filename + timestamp to keep rows grouped.
+    const shipmentId = `${(filename || 'shipment').replace(/\.[^.]+$/, '')}_${Date.now()}`;
+    const toInsert = [];
+    let skipped = 0;
+    for (const r of rows) {
+      // The exported file has columns: "Amazon SKU", "Shopify SKU",
+      // "Units Needed for 90 Day Supply". Amazon SKU has the FBA- prefix;
+      // Shopify SKU is the cleaned form.
+      const rawSku = String(r['Amazon SKU'] || '').trim();
+      const cleanSkuStr = String(r['Shopify SKU'] || '').trim().toUpperCase();
+      const units = Math.round(parseNumber(r['Units Needed for 90 Day Supply']));
+      if (!cleanSkuStr || units <= 0) { skipped++; continue; }
+      toInsert.push({
+        shipment_id: shipmentId,
+        sku: cleanSkuStr,
+        raw_sku: rawSku,
+        units,
+        filename: filename || '',
+      });
+    }
+    const inserted = await batchInsert('shipments_sent', toInsert, 1000, (done, total) => setProgress(15 + done/total*85));
     return { inserted, skipped };
   }
 
@@ -1140,7 +1202,7 @@
       return;
     }
 
-    const typeLabels = { sales: 'Sales', ad: 'Ad', fba: 'FBA Inventory', fba_planning: 'FBA Planning', blb: 'BURLEBO Inventory' };
+    const typeLabels = { sales: 'Sales', ad: 'Ad', fba: 'FBA Inventory', blb: 'BURLEBO Inventory', shipment_sent: 'Shipment Sent' };
     container.innerHTML = `
       <table class="uploads-table">
         <thead><tr><th>Type</th><th>For date</th><th>File</th><th>Rows</th><th>Status</th><th>Uploaded</th></tr></thead>
