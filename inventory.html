@@ -272,15 +272,13 @@
           [['date', 'gte', startStr], ['date', 'lte', latestSalesDate]]);
       }
 
-      // Pull both FBA snapshots. Planning has the "available" number that
-      // matches Seller Central; Manage has the freshest inbound data.
-      // We use Planning for stock-on-hand and Manage for inbound (per design).
-      const fba = await fetchPaged('fba_inventory_snapshot',
-        'sku, raw_sku, asin, product_name, price, fulfillable, unsellable, reserved, total, inbound_working, inbound_shipped, inbound_receiving');
-      const planning = await fetchPaged('fba_planning_snapshot',
-        'sku, raw_sku, available, on_hand, reserved, unfulfillable, inbound_total');
+      // FBA stock comes from the Planning Report only — "Inventory Supply at
+      // FBA" (stored as on_hand) is the single source of truth and already
+      // equals inbound + available - reserved.
+      const fba = await fetchPaged('fba_planning_snapshot',
+        'sku, raw_sku, asin, product_name, on_hand, reserved, unfulfillable, inbound_total');
 
-      const result = buildInventory(fba, planning, salesWindow, latestSalesDate);
+      const result = buildInventory(fba, salesWindow, latestSalesDate);
       window._invData = result;
       renderInventory();
     } catch (err) {
@@ -288,16 +286,8 @@
     }
   }
 
-  function buildInventory(fbaRows, planningRows, salesWindow, latestSalesISO) {
+  function buildInventory(fbaRows, salesWindow, latestSalesISO) {
     const latestDate = latestSalesISO ? parseISO(latestSalesISO) : null;
-
-    // Build a lookup of Planning data by SKU. This is the report whose
-    // "available" number matches Seller Central's displayed Available count.
-    const planningMap = new Map();
-    for (const row of planningRows || []) {
-      const sku = String(row.sku || '').toUpperCase();
-      if (sku) planningMap.set(sku, row);
-    }
 
     // For each (sku, date) -> units, and first date seen per sku
     // Sales window only goes back 90 days, so days_in_fba caps at 90.
@@ -385,21 +375,10 @@
       const groupRows = [];
       for (const sku of sortedSkus) {
         const invRow = invMap.get(sku) || {};
-        const planRow = planningMap.get(sku);
-        // Inbound — from Manage report (updates faster than Planning).
-        const inbound = (invRow.inbound_working || 0)
-                      + (invRow.inbound_shipped || 0)
-                      + (invRow.inbound_receiving || 0);
-        // FBA Stock formula (per design):
-        //   on_hand + inbound - reserved
-        // i.e., total physical-at-Amazon + en-route - already-promised.
-        // On-hand and Reserved come from Planning report (matches Seller Central);
-        // fall back to Manage values if the SKU isn't in Planning yet.
-        const onHand   = (planRow && planRow.on_hand   != null) ? planRow.on_hand
-                       : (invRow.fulfillable || 0);
-        const reserved = (planRow && planRow.reserved  != null) ? planRow.reserved
-                       : (invRow.reserved || 0);
-        const inv = onHand + inbound - reserved;
+        // FBA Stock = on_hand from Planning Report (= "Inventory Supply at FBA").
+        const inv = invRow.on_hand || 0;
+        // Inbound is purely informational — it's already factored into on_hand.
+        const inbound = invRow.inbound_total || 0;
         totalInv += inv;
         const u7  = getShipped(sku, 7);
         const u30 = getShipped(sku, 30);
@@ -415,10 +394,10 @@
         groupRows.push({
           sku,
           product_name: invRow.product_name || '',
-          fulfillable: inv,    // displayed as "FBA Stock" — already the combined formula
-          reserved,
-          unsellable: invRow.unsellable || 0,
-          inbound,             // still shown separately for visibility
+          fulfillable: inv,    // displayed as "FBA Stock"
+          reserved: invRow.reserved || 0,
+          unsellable: invRow.unfulfillable || 0,
+          inbound,             // informational only
           u7, u30, u60, u90,
           velocity: Math.round(velocity * 1000) / 1000,
           days_supply: daysSupply,
