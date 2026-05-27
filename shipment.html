@@ -515,16 +515,33 @@
         [['location', 'eq', 'HQ']]);
 
       // 5. In-flight shipments (uploaded shipment-sent files less than 48h old).
-      //    Each row = 1 SKU/quantity from a shipment file. We sum by SKU.
+      //    Each row = 1 SKU/quantity from a shipment file. We sum by SKU for
+      //    the shipment-builder math, AND we group by shipment_id so the UI
+      //    can show "what's in flight right now."
       const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
       const inFlightRows = await fetchPaged('shipments_sent',
-        'sku, units, uploaded_at',
+        'shipment_id, sku, raw_sku, units, filename, uploaded_at',
         [['uploaded_at', 'gte', cutoff]]);
       const inFlightBySku = new Map();
+      const inFlightByShipment = new Map();  // shipment_id -> { filename, uploaded_at, rows: [{sku, raw_sku, units}] }
       for (const r of inFlightRows) {
         const sku = String(r.sku || '').toUpperCase();
         if (!sku) continue;
         inFlightBySku.set(sku, (inFlightBySku.get(sku) || 0) + (r.units || 0));
+
+        const sid = r.shipment_id || 'unknown';
+        if (!inFlightByShipment.has(sid)) {
+          inFlightByShipment.set(sid, {
+            shipment_id: sid,
+            filename: r.filename || '(no filename)',
+            uploaded_at: r.uploaded_at,
+            rows: [],
+          });
+        }
+        const grp = inFlightByShipment.get(sid);
+        // Use the most recent uploaded_at across rows in case they differ
+        if (r.uploaded_at && r.uploaded_at > grp.uploaded_at) grp.uploaded_at = r.uploaded_at;
+        grp.rows.push({ sku, raw_sku: r.raw_sku, units: r.units || 0 });
       }
 
       // Sanity check: if a critical dataset is empty when the others aren't,
@@ -570,6 +587,9 @@
 
       window._shipData = result;
       window._shipData.diagnostics = diagnostics;
+      // Sort newest first for display
+      window._shipData.in_flight_shipments = [...inFlightByShipment.values()]
+        .sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)));
       window._shipRows = result.main.map(r => ({ ...r }));
 
       renderShipment();
@@ -611,6 +631,11 @@
     html += `<div class="kpi red"><div class="kpi-label">SKUs Out of Stock at HQ</div><div class="kpi-value">${fmtN(d.oos?.length || 0)}</div></div>`;
     html += `<div class="kpi blue"><div class="kpi-label">SKUs in Shipment</div><div class="kpi-value" id="ship-sku-kpi">${fmtN(skuCount)}</div></div>`;
     html += '</div>';
+
+    // In-flight shipments — only render the section if there are any.
+    if (d.in_flight_shipments && d.in_flight_shipments.length > 0) {
+      html += renderInFlight(d.in_flight_shipments);
+    }
 
     html += `<div class="section-hdr">
       <div class="section-title">Shipment List</div>
@@ -665,6 +690,108 @@
     }
     html += '</tbody></table></div>';
     return html;
+  }
+
+  // ============================================================================
+  // In-flight shipments section
+  // ============================================================================
+  // Renders each in-flight shipment as a collapsible card. Header shows
+  // filename, time since upload, hours remaining until 48h expiration,
+  // SKU count, and total units. Click the header to toggle the per-SKU table.
+  function renderInFlight(shipments) {
+    let html = `<div class="section-hdr">
+      <div class="section-title" style="color: var(--blue);">🚚 In-Flight Shipments</div>
+      <div class="section-sub">${shipments.length} shipment${shipments.length===1?'':'s'} uploaded in the last 48 hours — units are added to FBA stock for shipment math until they expire.</div>
+    </div>`;
+
+    html += '<div class="inflight-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:24px;">';
+    shipments.forEach((s, i) => {
+      const totalUnits = s.rows.reduce((t, r) => t + (r.units || 0), 0);
+      const skuCount = s.rows.length;
+      const uploadedAgo = formatTimeAgo(s.uploaded_at);
+      const hoursLeft = formatHoursLeft(s.uploaded_at);
+      const safeId = 'inflight-' + i;
+
+      html += `<div class="inflight-card" style="border:1px solid var(--border); border-radius: var(--radius); background: var(--panel);">
+        <div onclick="toggleInFlight('${safeId}')" style="cursor:pointer; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
+            <span id="${safeId}-arrow" style="color:var(--text-dim); font-size:11px; transition:transform 0.15s;">▶</span>
+            <div style="min-width:0;">
+              <div class="mono" style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(s.filename)}</div>
+              <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">Uploaded ${uploadedAgo} · ${hoursLeft}</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:18px; flex-shrink:0;">
+            <div style="text-align:right;">
+              <div style="font-size:11px; color:var(--text-dim);">SKUs</div>
+              <div style="font-size:14px; font-weight:600;">${fmtN(skuCount)}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:11px; color:var(--text-dim);">Units</div>
+              <div style="font-size:14px; font-weight:600; color:var(--blue);">${fmtN(totalUnits)}</div>
+            </div>
+          </div>
+        </div>
+        <div id="${safeId}-body" style="display:none; border-top:1px solid var(--border); padding:0;">
+          <div class="table-wrap" style="margin:0;">
+            <table>
+              <thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units</th></tr></thead>
+              <tbody>`;
+      const sortedRows = [...s.rows].sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+      for (const r of sortedRows) {
+        const amzn = r.raw_sku || ('FBA-' + r.sku);
+        html += `<tr><td class="mono" style="color:var(--blue);">${escapeHtml(amzn)}</td><td class="mono">${escapeHtml(r.sku)}</td><td class="r">${fmtN(r.units)}</td></tr>`;
+      }
+      html += `</tbody></table></div></div>
+      </div>`;
+    });
+    html += '</div>';
+    return html;
+  }
+
+  // Convert a UTC timestamp to "5m ago" / "3h ago" / "1d ago" style.
+  function formatTimeAgo(iso) {
+    if (!iso) return '—';
+    const then = new Date(iso).getTime();
+    const now = Date.now();
+    const diffMin = Math.floor((now - then) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d ago`;
+  }
+
+  // Hours remaining until this in-flight shipment expires (48h after upload).
+  function formatHoursLeft(iso) {
+    if (!iso) return '';
+    const then = new Date(iso).getTime();
+    const expiresAt = then + 48 * 3600 * 1000;
+    const remainingMs = expiresAt - Date.now();
+    if (remainingMs <= 0) return '<span style="color:var(--red);">expired</span>';
+    const hoursLeft = Math.floor(remainingMs / 3600000);
+    const minsLeft  = Math.floor((remainingMs % 3600000) / 60000);
+    const display = hoursLeft >= 1 ? `${hoursLeft}h ${minsLeft}m` : `${minsLeft}m`;
+    const color = hoursLeft < 6 ? 'var(--yellow)' : 'var(--text-dim)';
+    return `<span style="color:${color};">${display} until expiration</span>`;
+  }
+
+  // Toggle the expanded detail table on an in-flight card.
+  function toggleInFlight(id) {
+    const body = document.getElementById(id + '-body');
+    const arrow = document.getElementById(id + '-arrow');
+    if (!body || !arrow) return;
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+  }
+
+  // Defensive HTML escaping for any string we drop into innerHTML.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function deleteShipRow(i) {
