@@ -515,19 +515,44 @@
   // ============================================================================
   // Data load
   // ============================================================================
+  // Fetches all rows from a Supabase table in pages of 1000 (PostgREST's
+  // default cap). Robust to transient network errors and Supabase cold-starts:
+  //   - retries each page up to 3 times if `error` is non-null or `data` is null
+  //   - throws if all retries fail (so the caller can show an error instead
+  //     of silently rendering a wrong number)
   async function fetchPaged(table, columns, filters = []) {
     const all = [];
     let from = 0;
     const page = 1000;
     while (true) {
-      let q = sb.from(table).select(columns);
-      for (const [k, op, v] of filters) q = q[op](k, v);
-      q = q.range(from, from + page - 1);
-      const { data, error } = await q;
-      if (error) throw new Error(error.message);
-      if (!data || data.length === 0) break;
-      all.push(...data);
-      if (data.length < page) break;
+      let pageData = null;
+      let lastErr = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let q = sb.from(table).select(columns);
+        for (const [k, op, v] of filters) q = q[op](k, v);
+        q = q.range(from, from + page - 1);
+        const { data, error } = await q;
+        if (error) {
+          lastErr = error;
+          // Brief backoff before retry
+          await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+          continue;
+        }
+        // data === null shouldn't happen without error, but guard for it
+        if (data == null) {
+          lastErr = new Error('Null response from ' + table);
+          await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+          continue;
+        }
+        pageData = data;
+        break;
+      }
+      if (pageData == null) {
+        throw new Error(`fetchPaged failed on ${table} at offset ${from}: ${lastErr ? lastErr.message : 'unknown error'}`);
+      }
+      if (pageData.length === 0) break;
+      for (const row of pageData) all.push(row);  // avoid spread overflow on large pages
+      if (pageData.length < page) break;
       from += page;
     }
     return all;
@@ -566,6 +591,35 @@
       const blb = await fetchPaged('blb_inventory_snapshot',
         'sku, channel, location, on_hand_avail',
         [['location', 'eq', 'HQ']]);
+
+      // Sanity check: if a critical dataset is empty when the others aren't,
+      // refuse to render — a partial fetch will produce wildly wrong totals
+      // (this was the source of "first load shows huge number, refresh corrects").
+      const diagnostics = {
+        latest_sales_date: latestSalesDate,
+        sales_rows: salesWindow.length,
+        fba_manage_rows: fba.length,
+        fba_planning_rows: planning.length,
+        blb_rows: blb.length,
+      };
+      const empty = [];
+      if (salesWindow.length === 0 && latestSalesDate) empty.push('sales_daily');
+      if (fba.length === 0) empty.push('fba_inventory_snapshot');
+      if (planning.length === 0) empty.push('fba_planning_snapshot');
+      if (blb.length === 0) empty.push('blb_inventory_snapshot');
+      if (empty.length > 0 && empty.length < 4) {
+        // Partial fetch — some tables returned data, others didn't. Almost
+        // certainly a cold-start race. Tell the user and bail out cleanly.
+        document.getElementById('shipment-content').innerHTML =
+          `<div class="empty"><div class="empty-icon">⚠️</div>
+           <div class="empty-title">Data load was incomplete</div>
+           <div class="empty-sub">These tables came back empty: ${empty.join(', ')}.<br>
+             Click "Build Shipment" again — Supabase was warming up.</div>
+           <div style="margin-top:18px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);">
+             ${Object.entries(diagnostics).map(([k,v]) => `${k}: ${v}`).join('<br>')}
+           </div></div>`;
+        return;
+      }
 
       // Build BLB index: shopifySku (upper) -> { ecommerce, wholesale }
       const blbIndex = new Map();
@@ -619,6 +673,7 @@
       }
 
       window._shipData = result;
+      window._shipData.diagnostics = diagnostics;
       window._shipRows = result.main.map(r => ({ ...r }));
       renderShipment();
     } catch (err) {
@@ -690,6 +745,17 @@
     html += '</tbody></table></div>';
 
     if (d.oos && d.oos.length > 0) html += renderOos(d.oos);
+
+    // Diagnostic footer — tiny readout of source data sizes so the user can
+    // spot if a load was partial. If the numbers here ever differ wildly
+    // between two refreshes, something fetched is unstable.
+    if (d.diagnostics) {
+      const dg = d.diagnostics;
+      html += `<div style="margin-top:32px;padding:12px 16px;border-top:1px solid var(--border);font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);">
+        <strong style="color:var(--text-dim);">Data sources used:</strong>
+        sales=${fmtN(dg.sales_rows)} · fba_manage=${fmtN(dg.fba_manage_rows)} · fba_planning=${fmtN(dg.fba_planning_rows)} · blb=${fmtN(dg.blb_rows)} · latest_sales_date=${dg.latest_sales_date || '—'}
+      </div>`;
+    }
 
     document.getElementById('shipment-content').innerHTML = html;
   }
