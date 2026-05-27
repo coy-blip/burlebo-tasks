@@ -61,6 +61,40 @@
 
   .meta-line { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
 
+  /* Product group filter buttons */
+  .inv-group-btn {
+    padding: 7px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .inv-group-btn:hover { background: #1f242c; }
+  .inv-group-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .inv-group-btn .count {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+  }
+  .inv-group-btn.active .count {
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.18);
+  }
+
   .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead tr { background: var(--panel-2); }
@@ -176,10 +210,50 @@
   }
   function daysBetween(a, b) { return Math.round((b.getTime() - a.getTime()) / 86400000); }
   function fmtN(n) { if (n==null) return '—'; return Math.round(n).toLocaleString(); }
+  // Defensive escapes for any user-derived string we drop into innerHTML / onclick.
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  // Same intent but safe for use inside a JS string literal in an onclick=
+  // attribute. Strips single quotes and backslashes to keep it bulletproof.
+  function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/[\\']/g, '');
+  }
   function formatLongDate(iso) {
     const d = parseISO(iso);
     if (!d) return iso;
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  }
+
+  // ============================================================================
+  // Product group lookup — for the filter buttons. Loaded once from Supabase
+  // and cached. Each SKU resolves to a single product group via its longest-
+  // matching prefix (e.g. "Y-PH-" wins over "Y-" because we sort longest-first).
+  // ============================================================================
+  let _prefixMap = null;       // [{ prefix, group }] sorted longest first
+
+  async function loadProductGroups() {
+    if (_prefixMap) return;
+    const { data: prefixes } = await sb
+      .from('product_group_prefixes')
+      .select('prefix, product_groups(group_name)');
+    const list = (prefixes || []).map(p => ({
+      prefix: p.prefix.toUpperCase(),
+      group:  p.product_groups?.group_name || 'Other',
+    }));
+    list.sort((a, b) => b.prefix.length - a.prefix.length);
+    _prefixMap = list;
+  }
+
+  function getCategory(sku) {
+    const s = stripFba(sku);
+    if (!_prefixMap) return 'Other';
+    for (const p of _prefixMap) {
+      if (s.startsWith(p.prefix)) return p.group;
+    }
+    return 'Other';
   }
 
   // ============================================================================
@@ -277,6 +351,9 @@
       // equals inbound + available - reserved.
       const fba = await fetchPaged('fba_planning_snapshot',
         'sku, raw_sku, asin, product_name, on_hand, reserved, unfulfillable, inbound_total');
+
+      // Product-group prefix map — used to tag each style for filter buttons.
+      await loadProductGroups();
 
       const result = buildInventory(fba, salesWindow, latestSalesDate);
       window._invData = result;
@@ -405,7 +482,10 @@
         });
       }
 
-      outputGroups.push({ key, total_inv: totalInv, rows: groupRows });
+      // Derive this group's product category from its first SKU. Every SKU
+      // in a group shares the same prefix, so they all map to the same group.
+      const category = groupRows.length > 0 ? getCategory(groupRows[0].sku) : 'Other';
+      outputGroups.push({ key, total_inv: totalInv, rows: groupRows, category });
     }
 
     outputGroups.sort((a, b) => a.total_inv - b.total_inv);
@@ -424,6 +504,15 @@
     return `<span class="badge green">${Math.round(dos)}d</span>`;
   }
 
+  // Which product-group button is currently selected. 'All' = no filter.
+  // Lives on window so external handlers can read/write it.
+  window._invActiveGroup = window._invActiveGroup || 'All';
+
+  function setInvGroup(g) {
+    window._invActiveGroup = g;
+    renderInventory();
+  }
+
   function renderInventory() {
     const d = window._invData;
     if (!d) return;
@@ -434,16 +523,66 @@
     document.getElementById('inv-last-date').textContent = d.last_date ? `Sales data through: ${formatLongDate(d.last_date)}` : '';
 
     const query = document.getElementById('inv-search').value.trim().toUpperCase();
-    // Filter rows by SKU
-    const filteredGroups = query
-      ? d.groups
-          .map(g => ({ ...g, rows: g.rows.filter(r => r.sku.includes(query)) }))
-          .filter(g => g.rows.length > 0)
-      : d.groups;
+    const active = window._invActiveGroup || 'All';
+
+    // Filter logic:
+    //   - If there's a search query, it OVERRIDES the group filter and
+    //     searches across ALL SKUs (per Coy's spec).
+    //   - Otherwise, the group button filters the visible groups.
+    let filteredGroups;
+    if (query) {
+      filteredGroups = d.groups
+        .map(g => ({ ...g, rows: g.rows.filter(r => r.sku.includes(query)) }))
+        .filter(g => g.rows.length > 0);
+    } else if (active && active !== 'All') {
+      filteredGroups = d.groups.filter(g => g.category === active);
+    } else {
+      filteredGroups = d.groups;
+    }
 
     const totalRows = filteredGroups.reduce((s, g) => s + g.rows.length, 0);
 
-    let html = `<div class="meta-line">${fmtN(totalRows)} SKU${totalRows===1?'':'s'} shown${query ? ' (filtered)' : ''}</div>`;
+    // Build group buttons. Each button shows category name + SKU count.
+    // Counts come from the full dataset (d.groups), not the filtered view,
+    // so the numbers don't change as the user clicks around.
+    const groupCounts = new Map();
+    let allCount = 0;
+    for (const g of d.groups) {
+      const cat = g.category || 'Other';
+      const skuCount = g.rows.length;
+      allCount += skuCount;
+      groupCounts.set(cat, (groupCounts.get(cat) || 0) + skuCount);
+    }
+    // Sorted alphabetically for predictable layout, "Other" pushed to end.
+    const sortedCats = [...groupCounts.keys()].sort((a, b) => {
+      if (a === 'Other') return 1;
+      if (b === 'Other') return -1;
+      return a.localeCompare(b);
+    });
+
+    const searchActive = query.length > 0;
+    let buttonsHtml = '<div class="inv-group-buttons" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;">';
+    // "All" button
+    {
+      const isActive = active === 'All' && !searchActive;
+      const cls = isActive ? 'inv-group-btn active' : 'inv-group-btn';
+      buttonsHtml += `<button class="${cls}" onclick="setInvGroup('All')">All <span class="count">${fmtN(allCount)}</span></button>`;
+    }
+    for (const cat of sortedCats) {
+      const isActive = cat === active && !searchActive;
+      const cls = isActive ? 'inv-group-btn active' : 'inv-group-btn';
+      const esc = escapeAttr(cat);
+      buttonsHtml += `<button class="${cls}" onclick="setInvGroup('${esc}')">${escapeHtml(cat)} <span class="count">${fmtN(groupCounts.get(cat))}</span></button>`;
+    }
+    buttonsHtml += '</div>';
+
+    // Meta line — describe current view
+    let metaSuffix = '';
+    if (searchActive)                            metaSuffix = ' (searching all SKUs)';
+    else if (active && active !== 'All')         metaSuffix = ` (${active})`;
+
+    let html = buttonsHtml;
+    html += `<div class="meta-line">${fmtN(totalRows)} SKU${totalRows===1?'':'s'} shown${metaSuffix}</div>`;
     html += '<div class="table-wrap"><table><thead><tr>';
     html += '<th>SKU</th><th class="r">FBA Stock</th><th class="r">Inbound</th>';
     html += '<th class="r">T7</th><th class="r">T30</th><th class="r">T60</th><th class="r">T90</th>';
