@@ -210,16 +210,11 @@
   }
   function daysBetween(a, b) { return Math.round((b.getTime() - a.getTime()) / 86400000); }
   function fmtN(n) { if (n==null) return '—'; return Math.round(n).toLocaleString(); }
-  // Defensive escapes for any user-derived string we drop into innerHTML / onclick.
+  // Defensive HTML escape for any user-derived string dropped into innerHTML.
   function escapeHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
-  // Same intent but safe for use inside a JS string literal in an onclick=
-  // attribute. Strips single quotes and backslashes to keep it bulletproof.
-  function escapeAttr(s) {
-    return String(s == null ? '' : s).replace(/[\\']/g, '');
   }
   function formatLongDate(iso) {
     const d = parseISO(iso);
@@ -561,18 +556,20 @@
     });
 
     const searchActive = query.length > 0;
-    let buttonsHtml = '<div class="inv-group-buttons" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;">';
+    let buttonsHtml = '<div class="inv-group-buttons" id="inv-group-buttons" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px;">';
     // "All" button
     {
       const isActive = active === 'All' && !searchActive;
       const cls = isActive ? 'inv-group-btn active' : 'inv-group-btn';
-      buttonsHtml += `<button class="${cls}" onclick="setInvGroup('All')">All <span class="count">${fmtN(allCount)}</span></button>`;
+      buttonsHtml += `<button class="${cls}" data-group="All">All <span class="count">${fmtN(allCount)}</span></button>`;
     }
     for (const cat of sortedCats) {
       const isActive = cat === active && !searchActive;
       const cls = isActive ? 'inv-group-btn active' : 'inv-group-btn';
-      const esc = escapeAttr(cat);
-      buttonsHtml += `<button class="${cls}" onclick="setInvGroup('${esc}')">${escapeHtml(cat)} <span class="count">${fmtN(groupCounts.get(cat))}</span></button>`;
+      // Use a data-attribute + delegated click listener instead of inline
+      // onclick — that way special characters like double-quotes ('5.5"')
+      // in the group name don't break the markup.
+      buttonsHtml += `<button class="${cls}" data-group="${escapeHtml(cat)}">${escapeHtml(cat)} <span class="count">${fmtN(groupCounts.get(cat))}</span></button>`;
     }
     buttonsHtml += '</div>';
 
@@ -613,6 +610,18 @@
     html += '</tbody></table></div>';
 
     document.getElementById('inventory-content').innerHTML = html;
+
+    // Wire group-button clicks via delegation so we don't have to embed the
+    // group name (which can contain quotes) in an onclick attribute.
+    const btns = document.getElementById('inv-group-buttons');
+    if (btns) {
+      btns.addEventListener('click', (e) => {
+        const target = e.target.closest('.inv-group-btn');
+        if (!target) return;
+        const g = target.getAttribute('data-group');
+        if (g != null) setInvGroup(g);
+      });
+    }
   }
 </script>
 
