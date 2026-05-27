@@ -276,7 +276,7 @@
 
       // Pull FBA SKUs too
       const { data: fbaSkus } = await sb
-        .from('fba_inventory_snapshot')
+        .from('fba_planning_snapshot')
         .select('sku')
         .ilike('sku', `%${q}%`)
         .limit(5000);
@@ -385,25 +385,16 @@
         allRows.push(...chunkRows);
       }
 
-      // 5. Pull matched FBA inventory (Manage + Planning) + BLB inventory
-      const fbaRows = await fetchPaged('fba_inventory_snapshot',
-        'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving',
+      // 5. Pull matched FBA inventory from Planning Report (single source of
+      //    truth). on_hand = "Inventory Supply at FBA".
+      const fbaRows = await fetchPaged('fba_planning_snapshot',
+        'sku, raw_sku, on_hand, reserved, unfulfillable, inbound_total',
         [['sku', 'in', matchedSkus]]);
       const fbaMap = new Map();
       for (const f of fbaRows) {
         const raw = String(f.raw_sku || '').toUpperCase();
         if (!(raw.startsWith('FBA-') || raw.startsWith('FBA2-'))) continue;
         fbaMap.set(String(f.sku || '').toUpperCase(), f);
-      }
-
-      // Planning snapshot — used for "available" (matches Seller Central).
-      const planningRows = await fetchPaged('fba_planning_snapshot',
-        'sku, raw_sku, available, on_hand, reserved',
-        [['sku', 'in', matchedSkus]]);
-      const planningMap = new Map();
-      for (const p of planningRows) {
-        const sku = String(p.sku || '').toUpperCase();
-        if (sku) planningMap.set(sku, p);
       }
 
       const blbRows = await fetchPaged('blb_inventory_snapshot',
@@ -473,15 +464,10 @@
         const velocity = calcVelocity(fbaU7, fbaU30, daysInFba);
 
         const fbaInv = fbaMap.get(sku) || {};
-        const planInv = planningMap.get(sku);
-        // FBA inventory formula:  on_hand + inbound - reserved
-        // (matches inventory page and shipment builder)
-        const fbaInbound = (fbaInv.inbound_working   || 0)
-                         + (fbaInv.inbound_shipped   || 0)
-                         + (fbaInv.inbound_receiving || 0);
-        const fbaOnHand   = (planInv && planInv.on_hand  != null) ? planInv.on_hand  : (fbaInv.fulfillable || 0);
-        const fbaReserved = (planInv && planInv.reserved != null) ? planInv.reserved : (fbaInv.reserved    || 0);
-        const fbaStock = fbaOnHand + fbaInbound - fbaReserved;
+        // FBA Stock = on_hand from Planning Report (= "Inventory Supply at FBA").
+        // That value already includes inbound and excludes reserved.
+        const fbaStock   = fbaInv.on_hand       || 0;
+        const fbaInbound = fbaInv.inbound_total || 0;  // informational
         let daysSupply;
         if (fbaStock === 0) daysSupply = 0;
         else if (velocity > 0) daysSupply = Math.round((fbaStock / velocity) * 10) / 10;
