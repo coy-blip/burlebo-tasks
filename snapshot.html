@@ -312,9 +312,10 @@
         'date, spend',
         [['date', 'gte', startDate30Str], ['date', 'lte', latestSalesISO]]);
 
-      // FBA inventory snapshot
-      const fbaP = fetchPaged('fba_inventory_snapshot',
-        'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving');
+      // FBA inventory snapshot — Planning Report only.
+      // on_hand = "Inventory Supply at FBA" (already inbound + available - reserved).
+      const fbaP = fetchPaged('fba_planning_snapshot',
+        'sku, raw_sku, on_hand, inbound_total');
 
       // Goal cumulative — pull all sales from goal start date for total_actual
       // (We'll get this from configRow first, then make a 2nd query if needed)
@@ -416,9 +417,10 @@
       const raw = String(f.raw_sku || '').toUpperCase();
       if (!(raw.startsWith('FBA-') || raw.startsWith('FBA2-'))) continue;
       const sku = String(f.sku || '').toUpperCase();
-      const ful = f.fulfillable || 0;
-      const inb = (f.inbound_working || 0) + (f.inbound_shipped || 0) + (f.inbound_receiving || 0);
-      const eff = ful + inb;
+      // FBA stock = on_hand from Planning Report (single source of truth).
+      const ful = f.on_hand || 0;
+      const inb = f.inbound_total || 0;   // informational only
+      const eff = ful;                    // on_hand already includes inbound
       const u7 = skuU7.get(sku) || 0;
       const u30 = skuU30.get(sku) || 0;
       const first = skuFirstFba.get(sku);
