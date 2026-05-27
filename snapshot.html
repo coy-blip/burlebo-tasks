@@ -269,7 +269,7 @@
     while (true) {
       let q = sb.from(table).select(columns);
       for (const [k, op, v] of filters) q = q[op](k, v);
-      q = q.range(from, from + page - 1);
+      q = q.order('id', { ascending: true }).range(from, from + page - 1);
       const { data, error } = await q;
       if (error) throw new Error(error.message);
       if (!data || data.length === 0) break;
