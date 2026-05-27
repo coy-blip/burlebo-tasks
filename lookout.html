@@ -365,7 +365,7 @@
       const [salesWindow, fba, blb] = await Promise.all([
         fetchPaged('sales_daily', 'date, sku, units, is_fba',
           [['date', 'gte', startStr], ['date', 'lte', latestSalesDate]]),
-        fetchPaged('fba_inventory_snapshot', 'sku, raw_sku'),
+        fetchPaged('fba_planning_snapshot', 'sku, raw_sku'),
         fetchPaged('blb_inventory_snapshot', 'sku, channel, location, on_hand_avail',
           [['location', 'eq', 'HQ']]),
       ]);
