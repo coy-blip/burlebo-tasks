@@ -264,10 +264,26 @@
     return transfer;
   }
 
-  function buildShipment(fbaRows, planningRows, blbInventoryByShopifySku, salesWindow, latestSalesISO, oosSnapshots = new Map()) {
+  // Inventory model (1:1 with fba_shipment.py):
+  //
+  //   inv             = Planning Report "Inventory Supply at FBA" for this SKU.
+  //                     That column ALREADY equals inbound + available - reserved,
+  //                     so it's the single source of truth for FBA stock.
+  //
+  //   in_flight       = Sum of units from any shipments_sent rows for this SKU
+  //                     that are < 48h old. Represents shipments we exported and
+  //                     sent to Amazon but that haven't yet appeared in the
+  //                     Planning Report (which lags ~24h).
+  //
+  //   effective_inv   = inv + in_flight
+  //
+  // The shipment builder uses effective_inv everywhere "what we have at FBA"
+  // matters — including the trigger check, days-of-supply, and recommended math.
+  function buildShipment(fbaRows, inFlightBySku, blbInventoryByShopifySku, salesWindow, latestSalesISO) {
     const latestDate = latestSalesISO ? parseISO(latestSalesISO) : null;
 
-    // Build per-SKU sales maps (only FBA-tagged sales count for shipment logic)
+    // Build per-SKU sales maps. Only FBA-tagged sales feed velocity for the
+    // shipment builder (matches the Python source).
     const skuDateMap = new Map();
     const skuFirstDate = new Map();
     for (const r of salesWindow) {
@@ -302,7 +318,10 @@
       return daysBetween(first, latestDate) + 1;
     }
 
-    // Filter FBA inventory rows
+    // Build the FBA inventory map. Each row uses Planning Report's
+    // `on_hand` column — that's where we stored "Inventory Supply at FBA"
+    // during upload. We key by the cleaned SKU.
+    // Filter: only consider SKUs whose raw form starts FBA-/FBA2-.
     const invMap = new Map();
     for (const row of fbaRows) {
       const raw = String(row.raw_sku || '').toUpperCase();
@@ -310,62 +329,49 @@
       invMap.set(String(row.sku || '').toUpperCase(), row);
     }
 
-    // Build Planning lookup. We use Planning's "available" as the on-hand
-    // stock count because it matches what Seller Central displays. The Manage
-    // report's "fulfillable" is used as a fallback when Planning is missing
-    // a SKU (e.g. brand-new SKU not yet in the Planning export).
-    const planningMap = new Map();
-    for (const row of planningRows || []) {
-      const sku = String(row.sku || '').toUpperCase();
-      if (sku) planningMap.set(sku, row);
-    }
-
-    // Pass 1: triggers
+    // Pass 1: determine triggers
     const skuRows = [];
     const triggerStyles = new Set();
     for (const [sku, invRow] of invMap.entries()) {
       const shopifySku = stripFba(sku);
-      const planRow = planningMap.get(sku);
-      // Combined FBA inventory formula:  on_hand + inbound - reserved
-      // (matches the inventory page exactly)
-      const inbound  = (invRow.inbound_working || 0)
-                     + (invRow.inbound_shipped || 0)
-                     + (invRow.inbound_receiving || 0);
-      const onHand   = (planRow && planRow.on_hand  != null) ? planRow.on_hand  : (invRow.fulfillable || 0);
-      const reserved = (planRow && planRow.reserved != null) ? planRow.reserved : (invRow.reserved    || 0);
-      const inv = onHand + inbound - reserved;
-      // "effective" is the same as inv now — inbound is already included.
-      // Kept as a named local for readability and downstream code compatibility.
-      const effective = inv;
+      const fbaStock = invRow.on_hand || 0;
+      const inFlight = inFlightBySku.get(shopifySku.toUpperCase()) || 0;
+      const effective_inv = fbaStock + inFlight;
+
       const u7 = getShipped(sku, 7);
       const u30 = getShipped(sku, 30);
       const daysInFba = getDaysInFba(sku);
-      const dailyVel = calcVelocity(u7, u30, daysInFba);
-      let daysSupply;
-      if (effective === 0) daysSupply = 0;
-      else if (dailyVel > 0) daysSupply = effective / dailyVel;
-      else daysSupply = null;
-      const styleKey = getStyleKey(sku);
+      const daily_vel = calcVelocity(u7, u30, daysInFba);
 
-      let isTrigger = false;
-      if (effective === 0) { isTrigger = true; triggerStyles.add(styleKey); }
-      else if (dailyVel > 0 && daysSupply !== null && daysSupply < DOS_THRESHOLD) { isTrigger = true; triggerStyles.add(styleKey); }
+      let days_supply;
+      if (effective_inv === 0) days_supply = 0;
+      else if (daily_vel > 0)  days_supply = effective_inv / daily_vel;
+      else                      days_supply = null;
 
-      skuRows.push({ amazon_sku: sku, shopify_sku: shopifySku, style_key: styleKey,
-        inv, inbound, effective_inv: effective, u7, u30, daily_vel: dailyVel,
-        days_supply: daysSupply, is_trigger: isTrigger });
+      const style_key = getStyleKey(sku);
+      let is_trigger = false;
+      if (effective_inv === 0) {
+        is_trigger = true;
+        triggerStyles.add(style_key);
+      } else if (daily_vel > 0 && days_supply !== null && days_supply < DOS_THRESHOLD) {
+        is_trigger = true;
+        triggerStyles.add(style_key);
+      }
+
+      skuRows.push({
+        amazon_sku: sku, shopify_sku: shopifySku, style_key,
+        inv: fbaStock,
+        in_flight: inFlight,
+        effective_inv,
+        u7, u30, daily_vel,
+        days_supply, is_trigger,
+      });
     }
 
-    // Pass 2: build
-    // Mutations to apply to oos_snapshots after the build is done:
-    //   - snapshotsToCreate: SKUs newly entering OOS that don't yet have a row
-    //   - snapshotsToDelete: SKUs that have a snapshot but are no longer OOS
-    //     (they've come back in stock — frozen value was already applied to
-    //     their units_to_ship, so we can clear the snapshot).
+    // Pass 2: build shipment list
     const main = [], oos = [];
-    const snapshotsToCreate = []; // [{ sku, frozen_units, original_recommended }]
-    const usedSnapshotSkus = new Set();
     let totalUnits = 0;
+
     for (const rec of skuRows) {
       let include = rec.is_trigger;
       if (!include && triggerStyles.has(rec.style_key)) {
@@ -376,86 +382,19 @@
       if (!include) continue;
 
       const recommended = calcRecommended(rec.effective_inv, rec.daily_vel);
-      const shopifySkuUpper = rec.shopify_sku.toUpperCase();
-      const existingSnap = oosSnapshots.get(shopifySkuUpper);
+      if (recommended <= 0) continue;
 
-      // If a SKU has an existing snapshot, it MUST be processed even if
-      // recommended <= 0 — otherwise restocked-but-low-velocity SKUs would
-      // silently fall off and lose their frozen units.
-      if (recommended <= 0 && !existingSnap) continue;
-
-      const blb = blbInventoryByShopifySku.get(shopifySkuUpper) || { ecommerce: 0, wholesale: 0 };
+      const blb = blbInventoryByShopifySku.get(rec.shopify_sku.toUpperCase()) || { ecommerce: 0, wholesale: 0 };
       const ecom = blb.ecommerce || 0;
       const wholesale = blb.wholesale || 0;
       const totalAvail = ecom + wholesale;
-      const isOos = totalAvail < OOS_THRESHOLD;
 
-      // ----- OOS at HQ branch ---------------------------------------------
-      if (isOos) {
-        let unitsNeeded;
-        if (existingSnap) {
-          // Already frozen — keep the snapshot value, don't recompute.
-          unitsNeeded = existingSnap.frozen_units;
-          usedSnapshotSkus.add(shopifySkuUpper);
-        } else {
-          // Newly entering OOS — freeze at 50% of current recommended.
-          // Use Math.max(1, …) so we don't end up with a frozen value of 0
-          // when recommended is tiny (1 unit) — round up.
-          unitsNeeded = Math.max(1, Math.ceil(recommended * 0.5));
-          snapshotsToCreate.push({
-            sku: shopifySkuUpper,
-            frozen_units: unitsNeeded,
-            original_recommended: recommended,
-          });
-        }
-        oos.push({
-          amazon_sku: rec.amazon_sku,
-          shopify_sku: rec.shopify_sku,
-          units_needed: unitsNeeded,
-          frozen: !!existingSnap || true, // flag for the UI (always true on OOS rows now)
-        });
+      if (totalAvail < OOS_THRESHOLD) {
+        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
         continue;
       }
 
-      // ----- In-stock branch ----------------------------------------------
-      // If we have a snapshot for an in-stock SKU, that means it just came
-      // back. Use the frozen units instead of fresh velocity math — the
-      // snapshot will be deleted at the end of this build.
-      let unitsToShip;
-      if (existingSnap) {
-        // Cap by what HQ can actually cover (capping at totalAvail mirrors
-        // calcShipmentQty's behavior so we don't recommend shipping more
-        // than HQ has on hand).
-        unitsToShip = Math.min(existingSnap.frozen_units, totalAvail);
-        usedSnapshotSkus.add(shopifySkuUpper);
-        // Don't apply the existing partial/small-shipment skip rules to
-        // restocked-from-OOS rows — coy explicitly wants the frozen value
-        // to land on the shipment list when stock returns.
-        const recForStatus = existingSnap.original_recommended || existingSnap.frozen_units;
-        const isPartial = unitsToShip < recForStatus;
-        const transfer = calcTransfer(ecom, wholesale, unitsToShip);
-        let status;
-        if (transfer > 0) status = isPartial ? 'Restock (partial) — Needs Transfer' : 'Restock — Needs Transfer';
-        else              status = isPartial ? 'Restock (partial)'                  : 'Restock — Good To Go';
-
-        if (unitsToShip > 0) {
-          main.push({
-            amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku,
-            units_to_ship: unitsToShip, status,
-            transfer_amount: transfer > 0 ? transfer : null,
-            recommended: recForStatus,
-            current_inv: rec.inv, inbound: rec.inbound, effective_inv: rec.effective_inv,
-            days_supply: rec.days_supply !== null ? Math.round(rec.days_supply * 10) / 10 : 0,
-            daily_vel: Math.round(rec.daily_vel * 1000) / 1000,
-            restocked_from_oos: true,
-          });
-          totalUnits += unitsToShip;
-        }
-        continue;
-      }
-
-      // ----- Normal in-stock path (no snapshot involved) ------------------
-      unitsToShip = calcShipmentQty(recommended, totalAvail);
+      const unitsToShip = calcShipmentQty(recommended, totalAvail);
       const blbCanCover = totalAvail >= recommended;
 
       if (unitsToShip <= 0) {
@@ -471,33 +410,21 @@
       const transfer = calcTransfer(ecom, wholesale, unitsToShip);
       let status;
       if (transfer > 0) status = isPartial ? 'Partial Shipment - Needs Transfer' : 'Needs Transfer';
-      else status = isPartial ? 'Partial Shipment - Good To Go' : 'Good To Go';
+      else              status = isPartial ? 'Partial Shipment - Good To Go'    : 'Good To Go';
 
       main.push({
         amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku,
-        units_to_ship: unitsToShip, status,
+        units_to_ship: unitsToShip,
+        status,
         transfer_amount: transfer > 0 ? transfer : null,
         recommended,
-        current_inv: rec.inv, inbound: rec.inbound, effective_inv: rec.effective_inv,
+        current_inv: rec.inv,
+        in_flight: rec.in_flight,
+        effective_inv: rec.effective_inv,
         days_supply: rec.days_supply !== null ? Math.round(rec.days_supply * 10) / 10 : 0,
         daily_vel: Math.round(rec.daily_vel * 1000) / 1000,
       });
       totalUnits += unitsToShip;
-    }
-
-    // Snapshots we had on file but didn't match any SKU we built today (the
-    // SKU is no longer triggering at all, or velocity is now zero with stock):
-    // also clear those — they're no longer relevant.
-    const snapshotsToDelete = [];
-    for (const sku of oosSnapshots.keys()) {
-      if (!usedSnapshotSkus.has(sku)) snapshotsToDelete.push(sku);
-    }
-    // SKUs that came back in stock AND went onto `main` — clear their
-    // snapshots so subsequent loads don't keep applying the frozen value.
-    for (const r of main) {
-      if (r.restocked_from_oos) {
-        snapshotsToDelete.push(r.shopify_sku.toUpperCase());
-      }
     }
 
     main.sort((a, b) => a.shopify_sku.localeCompare(b.shopify_sku));
@@ -507,8 +434,6 @@
       main, oos,
       total_units: totalUnits,
       run_date: latestSalesISO,
-      snapshotsToCreate,
-      snapshotsToDelete,
     };
   }
 
@@ -559,16 +484,16 @@
   }
 
   async function loadShipment() {
-    document.getElementById('shipment-content').innerHTML = '<div class="loading">Loading inventory + sales + HQ stock…</div>';
+    document.getElementById('shipment-content').innerHTML = '<div class="loading">Loading FBA stock + sales + HQ inventory + in-flight shipments…</div>';
 
     try {
-      // Latest sales date
+      // 1. Latest sales date — anchors the velocity window
       const { data: latestSales } = await sb.from('sales_daily').select('date').order('date', { ascending: false }).limit(1);
       const latestSalesDate = (latestSales && latestSales[0])
         ? ((latestSales[0].date instanceof Date) ? toISO(latestSales[0].date) : String(latestSales[0].date).slice(0,10))
         : null;
 
-      // 90 days of FBA sales
+      // 2. 90 days of sales (FBA-only filtering happens in buildShipment)
       let salesWindow = [];
       if (latestSalesDate) {
         const startDate = parseISO(latestSalesDate);
@@ -577,51 +502,56 @@
           [['date', 'gte', toISO(startDate)], ['date', 'lte', latestSalesDate]]);
       }
 
-      // FBA inventory — both reports.
-      // Manage report has the freshest inbound (used for "Inbound" math).
-      // Planning report has the "available" number that matches Seller Central
-      // (used as the operational on-hand stock, per shipment-builder design:
-      //  effective = Available + Inbound, excluding Reserved).
-      const fba = await fetchPaged('fba_inventory_snapshot',
-        'sku, raw_sku, fulfillable, inbound_working, inbound_shipped, inbound_receiving');
-      const planning = await fetchPaged('fba_planning_snapshot',
-        'sku, raw_sku, available, on_hand, reserved');
+      // 3. FBA inventory — Planning Report only. "on_hand" column holds the
+      //    "Inventory Supply at FBA" value (already includes inbound, excludes reserved).
+      const fba = await fetchPaged('fba_planning_snapshot',
+        'sku, raw_sku, on_hand');
 
-      // BLB inventory — only HQ + eCommerce/Wholesale channels
+      // 4. BURLEBO HQ inventory — eCommerce & Wholesale channels at location=HQ.
       const blb = await fetchPaged('blb_inventory_snapshot',
         'sku, channel, location, on_hand_avail',
         [['location', 'eq', 'HQ']]);
 
+      // 5. In-flight shipments (uploaded shipment-sent files less than 48h old).
+      //    Each row = 1 SKU/quantity from a shipment file. We sum by SKU.
+      const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const inFlightRows = await fetchPaged('shipments_sent',
+        'sku, units, uploaded_at',
+        [['uploaded_at', 'gte', cutoff]]);
+      const inFlightBySku = new Map();
+      for (const r of inFlightRows) {
+        const sku = String(r.sku || '').toUpperCase();
+        if (!sku) continue;
+        inFlightBySku.set(sku, (inFlightBySku.get(sku) || 0) + (r.units || 0));
+      }
+
       // Sanity check: if a critical dataset is empty when the others aren't,
-      // refuse to render — a partial fetch will produce wildly wrong totals
-      // (this was the source of "first load shows huge number, refresh corrects").
+      // refuse to render (catches cold-start fetch races).
       const diagnostics = {
         latest_sales_date: latestSalesDate,
         sales_rows: salesWindow.length,
-        fba_manage_rows: fba.length,
-        fba_planning_rows: planning.length,
+        fba_rows: fba.length,
         blb_rows: blb.length,
+        in_flight_rows: inFlightRows.length,
+        in_flight_skus: inFlightBySku.size,
       };
       const empty = [];
       if (salesWindow.length === 0 && latestSalesDate) empty.push('sales_daily');
-      if (fba.length === 0) empty.push('fba_inventory_snapshot');
-      if (planning.length === 0) empty.push('fba_planning_snapshot');
+      if (fba.length === 0) empty.push('fba_planning_snapshot');
       if (blb.length === 0) empty.push('blb_inventory_snapshot');
-      if (empty.length > 0 && empty.length < 4) {
-        // Partial fetch — some tables returned data, others didn't. Almost
-        // certainly a cold-start race. Tell the user and bail out cleanly.
+      if (empty.length > 0 && empty.length < 3) {
         document.getElementById('shipment-content').innerHTML =
           `<div class="empty"><div class="empty-icon">⚠️</div>
            <div class="empty-title">Data load was incomplete</div>
            <div class="empty-sub">These tables came back empty: ${empty.join(', ')}.<br>
-             Click "Build Shipment" again — Supabase was warming up.</div>
+             Click "Build Shipment" again — Supabase may have been warming up.</div>
            <div style="margin-top:18px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);">
              ${Object.entries(diagnostics).map(([k,v]) => `${k}: ${v}`).join('<br>')}
            </div></div>`;
         return;
       }
 
-      // Build BLB index: shopifySku (upper) -> { ecommerce, wholesale }
+      // Build BLB HQ index: shopifySku (upper) -> { ecommerce, wholesale }
       const blbIndex = new Map();
       for (const r of blb) {
         const ch = String(r.channel || '').toLowerCase();
@@ -630,51 +560,16 @@
         if (!sku) continue;
         const entry = blbIndex.get(sku) || { ecommerce: 0, wholesale: 0 };
         if (ch === 'ecommerce') entry.ecommerce += (r.on_hand_avail || 0);
-        else entry.wholesale += (r.on_hand_avail || 0);
+        else                    entry.wholesale += (r.on_hand_avail || 0);
         blbIndex.set(sku, entry);
       }
 
-      // Fetch any existing OOS snapshots. These are SKUs that previously
-      // went OOS at HQ; we have a frozen "units needed" value for each.
-      const { data: snapRows, error: snapErr } = await sb
-        .from('oos_snapshots')
-        .select('sku, frozen_units, original_recommended');
-      if (snapErr) throw new Error('oos_snapshots: ' + snapErr.message);
-      const oosSnapshots = new Map();
-      for (const r of (snapRows || [])) {
-        oosSnapshots.set(String(r.sku || '').toUpperCase(), {
-          frozen_units: r.frozen_units,
-          original_recommended: r.original_recommended,
-        });
-      }
-
-      const result = buildShipment(fba, planning, blbIndex, salesWindow, latestSalesDate, oosSnapshots);
-
-      // Apply snapshot mutations: insert new snapshots, delete used/stale ones.
-      // Failures here are non-fatal — log and keep going. The UI still renders
-      // correctly; we'd just lose the freeze on the affected SKUs.
-      if (result.snapshotsToCreate.length > 0) {
-        const { error: insErr } = await sb.from('oos_snapshots').upsert(
-          result.snapshotsToCreate.map(s => ({
-            sku: s.sku,
-            frozen_units: s.frozen_units,
-            original_recommended: s.original_recommended,
-          })),
-          { onConflict: 'sku' }
-        );
-        if (insErr) console.error('Snapshot insert failed:', insErr.message);
-      }
-      if (result.snapshotsToDelete.length > 0) {
-        const { error: delErr } = await sb
-          .from('oos_snapshots')
-          .delete()
-          .in('sku', [...new Set(result.snapshotsToDelete)]);
-        if (delErr) console.error('Snapshot delete failed:', delErr.message);
-      }
+      const result = buildShipment(fba, inFlightBySku, blbIndex, salesWindow, latestSalesDate);
 
       window._shipData = result;
       window._shipData.diagnostics = diagnostics;
       window._shipRows = result.main.map(r => ({ ...r }));
+
       renderShipment();
     } catch (err) {
       document.getElementById('shipment-content').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Error</div><div class="empty-sub">${err.message}</div></div>`;
@@ -724,7 +619,7 @@
     html += '<th style="width:36px;"></th>';
     html += '<th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units to Ship</th>';
     html += '<th>Status</th><th class="r">Transfer</th>';
-    html += '<th class="r">FBA Stock</th><th class="r">Inbound</th>';
+    html += '<th class="r">FBA Stock</th><th class="r" title="From shipment files uploaded as sent in the last 48h">In Flight</th>';
     html += '<th class="r">Days Supply</th><th class="r">Recommended</th>';
     html += '</tr></thead><tbody id="ship-tbody">';
 
@@ -737,7 +632,7 @@
         <td>${statusBadge(r.status)}</td>
         <td class="r">${r.transfer_amount ? fmtN(r.transfer_amount) : '—'}</td>
         <td class="r">${fmtN(r.current_inv)}</td>
-        <td class="r" style="color: var(--blue);">${fmtN(r.inbound)}</td>
+        <td class="r" style="color: var(--blue);">${r.in_flight > 0 ? fmtN(r.in_flight) : '—'}</td>
         <td class="r">${r.days_supply ? r.days_supply.toFixed(1) + 'd' : '0d'}</td>
         <td class="r" style="color: var(--text-dim);">${fmtN(r.recommended)}</td>
       </tr>`;
@@ -746,14 +641,14 @@
 
     if (d.oos && d.oos.length > 0) html += renderOos(d.oos);
 
-    // Diagnostic footer — tiny readout of source data sizes so the user can
-    // spot if a load was partial. If the numbers here ever differ wildly
-    // between two refreshes, something fetched is unstable.
+    // Diagnostic footer — readout of source data sizes so a partial load is
+    // visible. If these numbers differ between two consecutive builds, the
+    // shipment can't be trusted yet.
     if (d.diagnostics) {
       const dg = d.diagnostics;
       html += `<div style="margin-top:32px;padding:12px 16px;border-top:1px solid var(--border);font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);">
         <strong style="color:var(--text-dim);">Data sources used:</strong>
-        sales=${fmtN(dg.sales_rows)} · fba_manage=${fmtN(dg.fba_manage_rows)} · fba_planning=${fmtN(dg.fba_planning_rows)} · blb=${fmtN(dg.blb_rows)} · latest_sales_date=${dg.latest_sales_date || '—'}
+        sales=${fmtN(dg.sales_rows)} · fba=${fmtN(dg.fba_rows)} · blb=${fmtN(dg.blb_rows)} · in_flight=${fmtN(dg.in_flight_skus)} SKUs (${fmtN(dg.in_flight_rows)} rows) · latest_sales_date=${dg.latest_sales_date || '—'}
       </div>`;
     }
 
@@ -761,10 +656,10 @@
   }
 
   function renderOos(oos) {
-    let html = `<div class="section-hdr"><div class="section-title" style="color: var(--red);">⚠️ OOS at HQ — Cannot Ship</div><div class="section-sub">${oos.length} SKU${oos.length===1?'':'s'} need restocking at HQ before they can be sent to FBA. <span style="color:var(--text-dim);">Units shown are frozen at 50% of recommended at the moment each SKU went OOS, so the number doesn't decay to zero while the SKU sits out of stock.</span></div></div>`;
-    html += '<div class="table-wrap"><table><thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units Needed (frozen)</th></tr></thead><tbody>';
+    let html = `<div class="section-hdr"><div class="section-title" style="color: var(--red);">⚠️ OOS at HQ — Cannot Ship</div><div class="section-sub">${oos.length} SKU${oos.length===1?'':'s'} need restocking at HQ before they can be sent to FBA</div></div>`;
+    html += '<div class="table-wrap"><table><thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units Needed</th></tr></thead><tbody>';
     for (const r of oos) {
-      html += `<tr><td class="mono" style="color: var(--red);">FBA-${r.shopify_sku}</td><td class="mono">${r.shopify_sku}</td><td class="r">🔒 ${fmtN(r.units_needed)}</td></tr>`;
+      html += `<tr><td class="mono" style="color: var(--red);">FBA-${r.shopify_sku}</td><td class="mono">${r.shopify_sku}</td><td class="r">${fmtN(r.units_needed)}</td></tr>`;
     }
     html += '</tbody></table></div>';
     return html;
