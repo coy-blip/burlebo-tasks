@@ -495,9 +495,11 @@
     }
     rows.sort((a, b) => b.net_profit - a.net_profit);
 
-    const grandRev = totalRev + creatorIncome;
+    // Creator spend/income are informational only — they do NOT affect revenue or profit.
+    // Creator income is already included in sales_daily revenue (it's an attribution bucket, not additional revenue).
+    const grandRev = totalRev;
     const totalLeakage = grandRev * AMAZON_LEAKAGE_RATE;
-    const grandProfit = grandRev - totalCogs - totalFees - totalAds - totalAgency - creatorSpend - totalLeakage;
+    const grandProfit = grandRev - totalCogs - totalFees - totalAds - totalAgency - totalLeakage;
     const grandMargin = grandRev ? grandProfit / grandRev : 0;
     const tacos = grandRev ? totalAds / grandRev : 0;
 
