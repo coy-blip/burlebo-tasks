@@ -789,7 +789,7 @@
         sessions:    Math.round(parseNumber(r['Sessions - Total']) + parseNumber(r['Sessions - Total - B2B'])),
         page_views:  Math.round(parseNumber(r['Page Views - Total']) + parseNumber(r['Page Views - Total - B2B'])),
         buy_box_pct: parseNumber(r['Featured Offer (Buy Box) Percentage']) / 100,
-        units:       Math.round(parseNumber(r['Total Order Items']) + parseNumber(r['Total Order Items - B2B'])),
+        units:       Math.round(parseNumber(r['Units Ordered']) + parseNumber(r['Units Ordered - B2B'])),
         revenue:     parseNumber(r['Ordered Product Sales']) + parseNumber(r['Ordered Product Sales - B2B']),
         upload_id:   uploadId,
       });
