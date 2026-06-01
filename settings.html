@@ -126,6 +126,15 @@
   }
   .group-row { display: grid; grid-template-columns: 1.4fr 0.6fr 0.6fr 0.6fr 40px; gap: 10px; align-items: center; }
   @media (max-width: 700px) { .group-row { grid-template-columns: 1fr 1fr; } }
+  .group-header {
+    display: grid; grid-template-columns: 1.4fr 0.6fr 0.6fr 0.6fr 40px; gap: 10px;
+    padding: 0 15px; margin-bottom: 8px;
+  }
+  .group-header span {
+    font-size: 11px; color: var(--text-dim); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  @media (max-width: 700px) { .group-header { display: none; } }
   .group-row input { font-size: 13px; padding: 7px 10px; background: var(--panel); border: 1px solid var(--border); }
   .prefixes-line {
     margin-top: 10px; padding-top: 10px;
@@ -545,6 +554,20 @@
   // PRODUCT GROUPS TAB
   // ============================================================================
   function renderGroupsTab() {
+    const groupsSorted = [..._groups]
+      .filter(g => !g._deleted)
+      .sort((a, b) => (a.group_name || '').localeCompare(b.group_name || ''));
+
+    const headerRow = groupsSorted.length ? `
+        <div class="group-header">
+          <span>Product Group</span>
+          <span>COGS</span>
+          <span>FBM Fee</span>
+          <span>FBA Fee</span>
+          <span></span>
+        </div>
+    ` : '';
+
     let html = `
       <div class="panel">
         <div class="panel-title">Product Groups</div>
@@ -554,12 +577,11 @@
           Changing COGS or fees affects the Profit page calculations on next page load.
         </div>
 
+        ${headerRow}
         <div id="groups-list">
     `;
 
-    const groupsSorted = [..._groups].sort((a, b) => (a.group_name || '').localeCompare(b.group_name || ''));
     for (const g of groupsSorted) {
-      if (g._deleted) continue;
       const myPrefixes = _prefixes.filter(p => p.group_id === g.id && !p._deleted);
       const idx = _groups.findIndex(x => x === g);
       html += renderGroupCard(g, idx, myPrefixes);
