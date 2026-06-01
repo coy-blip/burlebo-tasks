@@ -309,6 +309,16 @@
     return idx !== -1 ? s.slice(0, idx) : s;
   }
 
+  // Classify an ad row by ad type using the campaign-name token (- SP -, - SB -, - SD -).
+  // The Detailed Ad Report has no "Ad product" column, so the campaign name is the signal.
+  function adTypeOf(campaignName) {
+    const n = ` ${String(campaignName || '').toUpperCase()} `;
+    if (n.includes(' SB ')) return 'Sponsored Brands';
+    if (n.includes(' SD ')) return 'Sponsored Display';
+    if (n.includes(' SP ')) return 'Sponsored Products';
+    return 'Other';
+  }
+
   // ============================================================================
   // Data load + calc
   // ============================================================================
@@ -344,7 +354,7 @@
       await loadProductGroups();
 
       const [ads, sales] = await Promise.all([
-        fetchPaged('ad_daily', 'date, sku, spend, sales, purchases', [['date', 'gte', s], ['date', 'lte', e]]),
+        fetchPaged('ad_daily', 'date, sku, spend, sales, purchases, campaign_name', [['date', 'gte', s], ['date', 'lte', e]]),
         fetchPaged('sales_daily', 'date, sku, units, revenue', [['date', 'gte', s], ['date', 'lte', e]]),
       ]);
 
@@ -445,6 +455,28 @@
     const totalAdSales = skuRows.reduce((s, r) => s + r.ad_sales, 0);
     const totalUnits   = skuRows.reduce((s, r) => s + r.units, 0);
 
+    // ---- Performance by ad type (classified from campaign name) ----
+    const typeMap = new Map();
+    for (const a of adRows) {
+      const t = adTypeOf(a.campaign_name);
+      const v = typeMap.get(t) || { spend: 0, ad_sales: 0, purchases: 0 };
+      v.spend     += parseFloat(a.spend || 0);
+      v.ad_sales  += parseFloat(a.sales || 0);
+      v.purchases += parseInt(a.purchases || 0);
+      typeMap.set(t, v);
+    }
+    const totalTypeSpend = [...typeMap.values()].reduce((s, v) => s + v.spend, 0);
+    const TYPE_ORDER = ['Sponsored Products', 'Sponsored Brands', 'Sponsored Display', 'Other'];
+    const by_ad_type = [...typeMap.entries()].map(([type, v]) => ({
+      type,
+      spend: Math.round(v.spend * 100) / 100,
+      ad_sales: Math.round(v.ad_sales * 100) / 100,
+      purchases: v.purchases,
+      roas: v.spend > 0 ? Math.round((v.ad_sales / v.spend) * 100) / 100 : null,
+      acos: v.ad_sales > 0 ? v.spend / v.ad_sales : null,
+      spend_share: totalTypeSpend > 0 ? v.spend / totalTypeSpend : 0,
+    })).sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
+
     return {
       summary: {
         total_spend: Math.round(totalSpend * 100) / 100,
@@ -455,6 +487,7 @@
         overall_roas: totalSpend > 0 ? Math.round((totalAdSales / totalSpend) * 100) / 100 : 0,
         overall_acos: totalAdSales > 0 ? totalSpend / totalAdSales : 0,
       },
+      by_ad_type,
       by_style: styleRows,
       by_sku: skuRows,
       by_group: groupRows,
@@ -466,6 +499,27 @@
   // ============================================================================
   function miniKpi(label, value, color) {
     return `<div class="mini-kpi ${color}"><div class="mini-kpi-label">${label}</div><div class="mini-kpi-value">${value}</div></div>`;
+  }
+
+  function renderAdTypeSection(rows) {
+    if (!rows || !rows.length) return '';
+    let h = `<div class="section-hdr"><div class="section-title">Performance by Ad Type</div><div class="section-sub">SP · SB · SD — classified from campaign names</div></div>`;
+    h += '<div class="table-wrap"><table><thead><tr>';
+    h += '<th>Ad Type</th><th class="r">Spend</th><th class="r">% of Spend</th><th class="r">Ad Sales</th><th class="r">Orders</th><th class="r">ROAS</th><th class="r">ACOS</th>';
+    h += '</tr></thead><tbody>';
+    for (const r of rows) {
+      h += '<tr>';
+      h += `<td>${r.type}</td>`;
+      h += `<td class="r">${fmt(r.spend)}</td>`;
+      h += `<td class="r">${fmtP(r.spend_share)}</td>`;
+      h += `<td class="r">${fmt(r.ad_sales)}</td>`;
+      h += `<td class="r">${fmtN(r.purchases)}</td>`;
+      h += `<td class="r">${r.roas != null ? fmtX(r.roas) : '—'}</td>`;
+      h += `<td class="r">${r.acos != null ? fmtP(r.acos) : '—'}</td>`;
+      h += '</tr>';
+    }
+    h += '</tbody></table></div>';
+    return h;
   }
 
   function tacosBadge(t) {
@@ -506,6 +560,9 @@
     html += miniKpi('ROAS',          s.overall_roas ? fmtX(s.overall_roas) : '—', 'blue');
     html += miniKpi('ACOS',          fmtP(s.overall_acos), 'red');
     html += '</div>';
+
+    // Performance by ad type
+    html += renderAdTypeSection(d.by_ad_type);
 
     const view = document.getElementById('ad-view-select').value || 'style';
     let rows, sortState, label;
