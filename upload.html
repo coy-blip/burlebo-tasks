@@ -819,21 +819,35 @@
                      Object.keys(sample).find(k => k.trim().toLowerCase() === 'roas from clicks');
     const colCampId   = Object.keys(sample).find(k => k.trim().toLowerCase() === 'campaign id');
     const colCampName = Object.keys(sample).find(k => k.trim().toLowerCase() === 'campaign name');
+    const colAdProduct = Object.keys(sample).find(k => k.trim().toLowerCase() === 'ad product');
 
     // Aggregate by (date, sku, campaign_id) so duplicates in source don't violate unique constraint
     const map = new Map();
     let skipped = 0;
     for (const r of rows) {
-      const rawSku = (r[colSku] || '').trim();
-      if (!rawSku) { skipped++; continue; }
-      const { sku } = cleanSku(rawSku);
-      const campaignId = colCampId ? (r[colCampId] || '') : '';
-      const key = `${targetDate}|${rawSku}|${campaignId}`;
-      const existing = map.get(key);
       const spend = colCost ? parseNumber(r[colCost]) : 0;
       const sales = colSales ? parseNumber(r[colSales]) : 0;
       const purch = colPurch ? Math.round(parseNumber(r[colPurch])) : 0;
       const roas  = colRoas  ? parseNumber(r[colRoas]) : 0;
+      let rawSku = (r[colSku] || '').trim();
+      let sku;
+      if (!rawSku) {
+        // Sponsored Brands (and any other non-SKU ad type) advertise a brand/category,
+        // not a single product, so their Advertised product SKU is blank. Don't drop them —
+        // that silently loses the spend. If there's no spend either, skip; otherwise bucket
+        // the spend under a clear placeholder so it still counts toward total spend / TACOS.
+        // (profit.html spreads unmatched-SKU spend evenly across product groups; ads.html
+        // shows it under the "Other" group.)
+        if (!spend) { skipped++; continue; }
+        const adProduct = colAdProduct ? (r[colAdProduct] || '').trim() : '';
+        rawSku = adProduct ? adProduct.toUpperCase().replace(/\s+/g, '-') : 'UNATTRIBUTED-AD';
+        sku = rawSku;
+      } else {
+        sku = cleanSku(rawSku).sku;
+      }
+      const campaignId = colCampId ? (r[colCampId] || '') : '';
+      const key = `${targetDate}|${rawSku}|${campaignId}`;
+      const existing = map.get(key);
       if (existing) {
         existing.spend += spend;
         existing.sales += sales;
