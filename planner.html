@@ -68,6 +68,8 @@
   .info-line { font-size: 12px; color: var(--text-dim); margin-top: 12px; line-height: 1.6; }
   .info-line b { color: var(--text); font-weight: 600; }
   .pill-rate { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--text); font-size: 12px; font-weight: 600; margin-right: 4px; }
+  .notice { display: flex; gap: 10px; align-items: flex-start; background: rgba(255,107,53,0.10); border: 1px solid rgba(255,107,53,0.35); color: var(--text); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 22px; font-size: 13px; line-height: 1.5; }
+  .notice b { color: var(--accent); }
 
   .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
   .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
@@ -127,6 +129,8 @@
 <main id="app-main" class="hidden">
   <div class="page-title">Demand Planner</div>
   <div class="page-sub">Forecast how many units to order for any style over a date window, broken out by size — built on real trailing velocity + current FBA stock.</div>
+
+  <div class="notice">📈 <div><b>Forecasts assume +25% YoY growth.</b> Each style's current velocity is automatically uplifted 25% before demand is calculated, to account for brand growth. Change the "YoY growth %" field on any style if your expectation differs.</div></div>
 
   <div id="planner-body">
     <div class="empty"><div class="empty-icon">📈</div><div class="empty-title">Loading sales + inventory…</div></div>
@@ -488,6 +492,11 @@
             <div class="hint">Pick a basis to refill the rate.</div>
           </div>
           <div class="field">
+            <label>YoY growth (%)</label>
+            <input type="number" id="p-growth" step="5" value="25" oninput="recompute()">
+            <div class="hint">Defaults to 25%. Adjust per style if needed.</div>
+          </div>
+          <div class="field">
             <label>Buffer (weeks)</label>
             <input type="number" id="p-buffer" min="0" step="1" value="2" oninput="recompute()">
             <div class="hint">Safety stock on top of demand.</div>
@@ -513,7 +522,9 @@
 
   function recompute() {
     if (!SEL) return;
-    const rate = parseFloat(document.getElementById('p-rate').value) || 0;
+    const baseRate = parseFloat(document.getElementById('p-rate').value) || 0;
+    const growth = parseFloat(document.getElementById('p-growth').value) || 0;
+    const rate = baseRate * (1 + growth/100);
     const bufW = parseFloat(document.getElementById('p-buffer').value) || 0;
     const net  = document.getElementById('p-net').checked;
     const sISO = document.getElementById('p-start').value;
@@ -560,7 +571,7 @@
     document.getElementById('p-results').innerHTML = `
       <div class="kpis">
         <div class="kpi"><div class="kpi-label">Window</div><div class="kpi-value">${fmtN(days)}<span style="font-size:14px;color:var(--text-dim);"> days</span></div><div class="kpi-sub">${escapeHtml(sISO)} → ${escapeHtml(eISO)}</div></div>
-        <div class="kpi"><div class="kpi-label">Plan rate</div><div class="kpi-value">${fmt1(rate)}<span style="font-size:14px;color:var(--text-dim);">/day</span></div></div>
+        <div class="kpi"><div class="kpi-label">Plan rate</div><div class="kpi-value">${fmt1(rate)}<span style="font-size:14px;color:var(--text-dim);">/day</span></div>${growth ? `<div class="kpi-sub">${fmt1(baseRate)} base · ${growth>=0?'+':''}${fmt1(growth)}% YoY</div>` : ''}</div>
         <div class="kpi"><div class="kpi-label">Demand</div><div class="kpi-value">${fmtN(gross)}</div><div class="kpi-sub">rate × ${fmtN(days)} days</div></div>
         <div class="kpi"><div class="kpi-label">Buffer</div><div class="kpi-value">${fmtN(buffer)}</div><div class="kpi-sub">${fmtN(bufW)} wk safety</div></div>
         ${net ? `<div class="kpi"><div class="kpi-label">Current FBA stock</div><div class="kpi-value">${fmtN(totalStock)}</div><div class="kpi-sub">subtracted</div></div>` : ''}
