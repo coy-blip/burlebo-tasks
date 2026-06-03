@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amazon Inventory Audit — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="/auth.js"></script>
+<style>
+  :root {
+    --bg:#0d0f12; --panel:#14171c; --panel-2:#1a1e25; --border:#252a33; --text:#e8eaed; --text-dim:#8a92a0;
+    --accent:#ff6b35; --green:#4ade80; --red:#f87171; --yellow:#fbbf24; --blue:#38bdf8; --purple:#a78bfa;
+    --radius:10px; --radius-sm:6px;
+    --coy:#ff6b35; --coy-bg:rgba(255,107,53,.15); --designer:#a78bfa; --designer-bg:rgba(167,139,250,.15);
+    --admin:#4ade80; --admin-bg:rgba(74,222,128,.15); --employee:#38bdf8; --employee-bg:rgba(56,189,248,.15);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif}
+  header{border-bottom:1px solid var(--border);padding:18px 32px;display:flex;align-items:center;justify-content:space-between;background:var(--panel)}
+  header h1{font-size:18px;font-weight:700;margin:0}
+  header nav{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  header nav a{color:var(--text-dim);text-decoration:none;font-size:14px;font-weight:500}
+  header nav a:hover{color:var(--text)} header nav a.active{color:var(--accent)}
+  .role-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer}
+  .role-pill:hover{opacity:.85}
+  .role-pill.coy{background:var(--coy-bg);color:var(--coy)} .role-pill.designer{background:var(--designer-bg);color:var(--designer)}
+  .role-pill.admin{background:var(--admin-bg);color:var(--admin)} .role-pill.employee{background:var(--employee-bg);color:var(--employee)}
+  main{max-width:1100px;margin:0 auto;padding:28px 32px} main.hidden{display:none}
+  .page-title{font-size:28px;font-weight:700;margin:0 0 4px} .page-sub{font-size:14px;color:var(--text-dim);margin:0 0 24px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:20px}
+  .panel-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);margin:0 0 14px}
+  .drops{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.drops{grid-template-columns:1fr}}
+  .drop{border:2px dashed var(--border);border-radius:var(--radius);padding:26px 18px;text-align:center;cursor:pointer;transition:.15s;background:var(--panel-2)}
+  .drop:hover{border-color:#3a4150}
+  .drop.over{border-color:var(--accent);background:rgba(255,107,53,.07)}
+  .drop.loaded{border-color:var(--green);border-style:solid;background:rgba(74,222,128,.06)}
+  .drop .dz-label{font-size:14px;font-weight:600;margin-bottom:6px}
+  .drop .dz-hint{font-size:12px;color:var(--text-dim);line-height:1.5}
+  .drop .dz-file{font-size:13px;color:var(--green);font-weight:600;margin-top:10px;word-break:break-all}
+  .row-inline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:18px}
+  .btn{padding:10px 20px;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel-2);color:var(--text)}
+  .btn:hover{background:#1f242c} .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:disabled{opacity:.4;cursor:not-allowed} .btn.ghost{background:transparent;color:var(--text-dim)}
+  .rules{font-size:12px;color:var(--text-dim);line-height:1.7;margin-top:6px}
+  .rules b{color:var(--text)}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+  .kpi-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+  .kpi-value{font-size:26px;font-weight:700;line-height:1.1}
+  .kpi-value.red{color:var(--red)} .kpi-value.yellow{color:var(--yellow)} .kpi-value.accent{color:var(--accent)}
+  .kpi-sub{font-size:11px;color:var(--text-dim);margin-top:4px}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:720px){.two-col{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:13px} thead tr{background:var(--panel-2)}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{color:var(--text-dim);font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.06em}
+  td.r,th.r{text-align:right} tr:last-child td{border-bottom:none}
+  .err{color:var(--red);font-size:13px;margin-top:10px}
+  .ok-note{font-size:12px;color:var(--text-dim);margin-top:8px}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000}
+  .modal-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:28px;width:380px;max-width:calc(100vw - 32px)}
+  .modal-title{font-size:18px;font-weight:700;margin:0 0 6px} .modal-sub{font-size:13px;color:var(--text-dim);margin:0 0 20px}
+  .modal-options{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+  .modal-option{background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:13px 14px;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:500;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px}
+  .modal-option:hover{background:#1f242c;border-color:#2f3540}
+  .modal-option .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .modal-option .dot.coy{background:var(--coy)} .modal-option .dot.designer{background:var(--designer)}
+  .modal-option .dot.admin{background:var(--admin)} .modal-option .dot.employee{background:var(--employee)}
+  .pw-field{display:none;margin-top:8px}
+  .pw-field input{width:100%;padding:11px 12px;font-family:'DM Sans',sans-serif;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;margin-bottom:8px}
+  .pw-field input:focus{border-color:var(--accent)}
+  .pw-error{display:none;font-size:12px;color:var(--red);margin-bottom:8px} .pw-row{display:flex;gap:8px}
+</style>
+</head>
+<body>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav"><span class="role-pill" id="role-pill"></span></nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">Amazon Inventory Audit</div>
+  <div class="page-sub">Drop your Amazon export and your Shopify export, hit Run, and download a list of every SKU whose counts are out of sync, grouped by parent.</div>
+
+  <div class="panel">
+    <div class="panel-title">1 · Drop the two exports</div>
+    <div class="drops">
+      <div class="drop" id="drop-amz">
+        <input type="file" id="file-amz" accept=".txt,.csv,.tsv" style="display:none">
+        <div class="dz-label">Amazon export</div>
+        <div class="dz-hint">The Amazon inventory file (sku + quantity).<br>FBA SKUs are ignored automatically.</div>
+        <div class="dz-file" id="name-amz"></div>
+      </div>
+      <div class="drop" id="drop-shop">
+        <input type="file" id="file-shop" accept=".csv,.txt,.tsv" style="display:none">
+        <div class="dz-label">Shopify export</div>
+        <div class="dz-hint">The Shopify / inventory CSV.<br>Only the eCommerce channel "On hand available" is used.</div>
+        <div class="dz-file" id="name-shop"></div>
+      </div>
+    </div>
+    <div class="row-inline">
+      <button class="btn primary" id="run-btn" disabled onclick="runAudit()">Run audit</button>
+      <button class="btn ghost" id="reset-btn" onclick="resetAll()">Reset</button>
+      <span class="ok-note" id="status"></span>
+    </div>
+    <div class="rules">
+      <b>Flag rules:</b> Amazon is <b>3 or more units above</b> Shopify (oversell risk), or Amazon is <b>more than 20 units below</b> Shopify (lost sales).
+      The ~15 unit buffer sits inside the safe band and isn't flagged. SKUs where Amazon is 0 and Shopify is negative are skipped.
+    </div>
+    <div class="err" id="error"></div>
+  </div>
+
+  <div id="results"></div>
+</main>
+
+<script>
+  // ---- shared nav ----
+  async function loadSharedNav(){
+    try{
+      const r=await fetch('/nav.html',{cache:'no-cache'}); if(!r.ok)return;
+      const html=await r.text(); const nav=document.getElementById('main-nav'); const pill=document.getElementById('role-pill');
+      const tmp=document.createElement('div'); tmp.innerHTML=html;
+      const here=window.location.pathname.replace(/\/$/,'')||'/';
+      for(const a of tmp.querySelectorAll('a')){ const href=a.getAttribute('href');
+        if(href===here||(href==='/'&&here==='/'))a.classList.add('active'); nav.insertBefore(a,pill); }
+    }catch(e){console.error('Nav load failed:',e)}
+  }
+  window.onAuthReady=function(){ loadSharedNav(); wireDrops(); };
+
+  // ---- SKU parsing (matches the rest of the dashboard) ----
+  const SIZE=new Set(['XS','S','M','L','XL','XXL','XXXL','2XL','3XL','4XL','2T','3T','4T','5T','6T','NB','0/3','3/6','6/12','12/18','OS']);
+  function splitSku(sku){ const i=sku.lastIndexOf('-'); if(i!==-1){ const last=sku.slice(i+1); if(SIZE.has(last)) return [sku.slice(0,i),last]; } return [sku,'OS']; }
+  const SORD={}; ['NB','0/3','3/6','6/12','12/18','2T','3T','4T','5T','6T','XS','S','M','L','XL','XXL','XXXL','2XL','3XL','4XL','OS'].forEach((k,i)=>SORD[k]=i);
+  function toNum(v){ const n=parseFloat(String(v==null?'':v).replace(/,/g,'').replace(/[^0-9.\-]/g,'')); return isNaN(n)?0:Math.round(n); }
+  function fmtN(n){ return (n||0).toLocaleString(); }
+
+  // ---- file handling ----
+  let amzFile=null, shopFile=null;
+  function wireDrops(){
+    setupDrop('drop-amz','file-amz','name-amz', f=>{amzFile=f;}, );
+    setupDrop('drop-shop','file-shop','name-shop', f=>{shopFile=f;});
+  }
+  function setupDrop(dropId,inputId,nameId,assign){
+    const drop=document.getElementById(dropId), input=document.getElementById(inputId), nameEl=document.getElementById(nameId);
+    drop.onclick=()=>input.click();
+    input.onchange=()=>{ if(input.files[0]) accept(input.files[0]); };
+    drop.ondragover=e=>{e.preventDefault();drop.classList.add('over');};
+    drop.ondragleave=()=>drop.classList.remove('over');
+    drop.ondrop=e=>{ e.preventDefault(); drop.classList.remove('over'); if(e.dataTransfer.files[0]) accept(e.dataTransfer.files[0]); };
+    function accept(f){ assign(f); nameEl.textContent='✓ '+f.name; drop.classList.add('loaded'); refreshRun(); }
+  }
+  function refreshRun(){ document.getElementById('run-btn').disabled=!(amzFile&&shopFile); }
+  function resetAll(){
+    amzFile=null; shopFile=null;
+    ['amz','shop'].forEach(k=>{ document.getElementById('name-'+k).textContent=''; document.getElementById('drop-'+k).classList.remove('loaded'); document.getElementById('file-'+k).value=''; });
+    document.getElementById('results').innerHTML=''; document.getElementById('error').textContent=''; document.getElementById('status').textContent=''; refreshRun();
+  }
+  function parseFile(file){ return new Promise((res,rej)=>{ Papa.parse(file,{header:true,skipEmptyLines:true,dynamicTyping:false,complete:r=>res(r.data),error:rej}); }); }
+  function findKey(row,res){ for(const k of Object.keys(row)){ const t=k.trim(); for(const re of res){ if(re.test(t)) return k; } } return null; }
+
+  async function runAudit(){
+    const err=document.getElementById('error'); err.textContent='';
+    document.getElementById('status').textContent='Parsing…';
+    try{
+      const [amzRows,shopRows]=await Promise.all([parseFile(amzFile),parseFile(shopFile)]);
+      if(!amzRows.length) throw new Error('Amazon file looks empty.');
+      if(!shopRows.length) throw new Error('Shopify file looks empty.');
+
+      // Amazon: sku + quantity, drop FBA
+      const aSku=findKey(amzRows[0],[/^sku$/i,/sku/i]);
+      const aQty=findKey(amzRows[0],[/^quantity$/i,/quantity/i,/qty/i]);
+      if(!aSku||!aQty) throw new Error('Could not find "sku"/"quantity" columns in the Amazon file.');
+      const amz={};
+      for(const row of amzRows){ let s=(row[aSku]||'').trim().toUpperCase(); if(!s||s.startsWith('FBA'))continue; amz[s]=(amz[s]||0)+toNum(row[aQty]); }
+
+      // Shopify: eCommerce channel only, On hand available
+      const sSku=findKey(shopRows[0],[/^sku$/i,/sku/i]);
+      const sChan=findKey(shopRows[0],[/^channel$/i,/channel/i]);
+      const sAvail=findKey(shopRows[0],[/on hand available/i,/^available$/i,/available/i]);
+      if(!sSku||!sChan||!sAvail) throw new Error('Could not find "SKU"/"Channel"/"On hand available" columns in the Shopify file.');
+      const shop={};
+      for(const row of shopRows){ if((row[sChan]||'').trim().toLowerCase()!=='ecommerce')continue; let s=(row[sSku]||'').trim().toUpperCase(); if(!s)continue; shop[s]=(shop[s]||0)+toNum(row[sAvail]); }
+
+      // compare
+      const out=[]; let excluded=0;
+      const amzKeys=Object.keys(amz), shopSet=shop;
+      for(const s of amzKeys){ if(!(s in shopSet))continue;
+        const a=amz[s], e=shop[s], d=a-e;
+        if(a===0&&e<0){ if(d>=3||d<=-21)excluded++; continue; }     // skip rule
+        const [p,sz]=splitSku(s);
+        if(d>=3) out.push([p,sz,s,a,e,d,'Amazon HIGHER (oversell risk)']);
+        else if(d<=-21){ const sub=a<=1?'Disconnected (Amazon <=1)':'Drift (connected, off)'; out.push([p,sz,s,a,e,d,'Amazon LOWER: '+sub]); }
+      }
+      out.sort((x,y)=>{
+        const hx=x[6].startsWith('Amazon HIGHER')?0:1, hy=y[6].startsWith('Amazon HIGHER')?0:1;
+        if(hx!==hy)return hx-hy; if(x[0]!==y[0])return x[0]<y[0]?-1:1;
+        return (SORD[x[1]]??99)-(SORD[y[1]]??99);
+      });
+
+      // download
+      const today=new Date().toISOString().slice(0,10);
+      downloadCSV('inventory_audit_'+today+'.csv', out);
+      renderSummary(out, excluded, Object.keys(amz).length, Object.keys(shop).length);
+      document.getElementById('status').textContent='Done — file downloaded.';
+    }catch(e){
+      document.getElementById('status').textContent='';
+      err.textContent='⚠ '+e.message;
+    }
+  }
+
+  function downloadCSV(filename, rows){
+    const head=['Parent','Size','SKU','Amazon','Shopify_Ecom','Diff','Issue'];
+    const esc=v=>{ v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+    const csv=[head.join(',')].concat(rows.map(r=>r.map(esc).join(','))).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  function renderSummary(rows, excluded, amzCount, shopCount){
+    const high=rows.filter(r=>r[6].startsWith('Amazon HIGHER'));
+    const low=rows.filter(r=>r[6].startsWith('Amazon LOWER'));
+    const disc=low.filter(r=>r[6].includes('Disconnected'));
+    const parents=new Set(rows.map(r=>r[0]));
+    // top oversell by max +diff per parent
+    const hp={}; high.forEach(r=>{hp[r[0]]=Math.max(hp[r[0]]||0,r[5]);});
+    const topHigh=Object.entries(hp).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    // top disconnected by shopify units hidden
+    const dp={}; disc.forEach(r=>{dp[r[0]]=(dp[r[0]]||0)+r[4];});
+    const topDisc=Object.entries(dp).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+    document.getElementById('results').innerHTML=`
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-label">Flagged SKUs</div><div class="kpi-value">${fmtN(rows.length)}</div><div class="kpi-sub">${parents.size} parent items</div></div>
+        <div class="kpi"><div class="kpi-label">Oversell risk</div><div class="kpi-value red">${fmtN(high.length)}</div><div class="kpi-sub">Amazon higher (+3 or more)</div></div>
+        <div class="kpi"><div class="kpi-label">Amazon lower</div><div class="kpi-value yellow">${fmtN(low.length)}</div><div class="kpi-sub">${disc.length} look disconnected</div></div>
+        <div class="kpi"><div class="kpi-label">Skipped</div><div class="kpi-value">${fmtN(excluded)}</div><div class="kpi-sub">Amazon 0 / Shopify negative</div></div>
+        <div class="kpi"><div class="kpi-label">SKUs compared</div><div class="kpi-value">${fmtN(amzCount)}</div><div class="kpi-sub">vs ${fmtN(shopCount)} Shopify eComm</div></div>
+      </div>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-title">Top oversell risk (fix first)</div>
+          <table><thead><tr><th>Parent</th><th class="r">Worst diff</th></tr></thead><tbody>
+          ${topHigh.length?topHigh.map(([p,d])=>`<tr><td><b>${p}</b></td><td class="r" style="color:var(--red)">+${fmtN(d)}</td></tr>`).join(''):'<tr><td colspan=2 style="color:var(--text-dim)">None</td></tr>'}
+          </tbody></table>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Likely disconnected (Amazon ~0)</div>
+          <table><thead><tr><th>Parent</th><th class="r">Shopify units hidden</th></tr></thead><tbody>
+          ${topDisc.length?topDisc.map(([p,u])=>`<tr><td><b>${p}</b></td><td class="r">${fmtN(u)}</td></tr>`).join(''):'<tr><td colspan=2 style="color:var(--text-dim)">None</td></tr>'}
+          </tbody></table>
+        </div>
+      </div>
+      <div class="ok-note">Full grouped list is in the downloaded CSV (Parent, Size, SKU, Amazon, Shopify, Diff, Issue).</div>
+    `;
+  }
+</script>
+</body>
+</html>
