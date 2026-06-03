@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tools — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="/auth.js"></script>
+<style>
+  :root{
+    --bg:#0d0f12;--panel:#14171c;--panel-2:#1a1e25;--border:#252a33;--text:#e8eaed;--text-dim:#8a92a0;
+    --accent:#ff6b35;--green:#4ade80;--red:#f87171;--yellow:#fbbf24;--blue:#38bdf8;--purple:#a78bfa;
+    --radius:10px;--radius-sm:6px;
+    --coy:#ff6b35;--coy-bg:rgba(255,107,53,.15);--designer:#a78bfa;--designer-bg:rgba(167,139,250,.15);
+    --admin:#4ade80;--admin-bg:rgba(74,222,128,.15);--employee:#38bdf8;--employee-bg:rgba(56,189,248,.15);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif}
+  header{border-bottom:1px solid var(--border);padding:18px 32px;display:flex;align-items:center;justify-content:space-between;background:var(--panel)}
+  header h1{font-size:18px;font-weight:700;margin:0}
+  header nav{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  header nav a{color:var(--text-dim);text-decoration:none;font-size:14px;font-weight:500}
+  header nav a:hover{color:var(--text)} header nav a.active{color:var(--accent)}
+  .role-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer}
+  .role-pill:hover{opacity:.85}
+  .role-pill.coy{background:var(--coy-bg);color:var(--coy)} .role-pill.designer{background:var(--designer-bg);color:var(--designer)}
+  .role-pill.admin{background:var(--admin-bg);color:var(--admin)} .role-pill.employee{background:var(--employee-bg);color:var(--employee)}
+  main{max-width:1100px;margin:0 auto;padding:28px 32px} main.hidden{display:none}
+  .page-title{font-size:28px;font-weight:700;margin:0 0 4px} .page-sub{font-size:14px;color:var(--text-dim);margin:0 0 24px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+  .card{display:block;text-decoration:none;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;transition:.15s;color:var(--text)}
+  .card:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .card .ico{font-size:26px;margin-bottom:12px}
+  .card .ct{font-size:16px;font-weight:700;margin-bottom:6px}
+  .card .cd{font-size:13px;color:var(--text-dim);line-height:1.5}
+  .empty{color:var(--text-dim);font-size:14px;padding:40px 0}
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000}
+  .modal-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:28px;width:380px;max-width:calc(100vw - 32px)}
+  .modal-title{font-size:18px;font-weight:700;margin:0 0 6px} .modal-sub{font-size:13px;color:var(--text-dim);margin:0 0 20px}
+  .modal-options{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+  .modal-option{background:var(--panel-2);border:1px solid var(--border);color:var(--text);padding:13px 14px;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:500;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px}
+  .modal-option:hover{background:#1f242c;border-color:#2f3540}
+  .modal-option .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .modal-option .dot.coy{background:var(--coy)} .modal-option .dot.designer{background:var(--designer)}
+  .modal-option .dot.admin{background:var(--admin)} .modal-option .dot.employee{background:var(--employee)}
+  .pw-field{display:none;margin-top:8px}
+  .pw-field input{width:100%;padding:11px 12px;font-family:'DM Sans',sans-serif;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;margin-bottom:8px}
+  .pw-field input:focus{border-color:var(--accent)}
+  .pw-error{display:none;font-size:12px;color:var(--red);margin-bottom:8px} .pw-row{display:flex;gap:8px}
+</style>
+</head>
+<body>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav"><span class="role-pill" id="role-pill"></span></nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">Tools</div>
+  <div class="page-sub">Your working tools in one place.</div>
+  <div class="grid" id="tool-grid"></div>
+</main>
+
+<script>
+  async function loadSharedNav(){
+    try{
+      const r=await fetch('/nav.html',{cache:'no-cache'}); if(!r.ok)return;
+      const html=await r.text(); const nav=document.getElementById('main-nav'); const pill=document.getElementById('role-pill');
+      const tmp=document.createElement('div'); tmp.innerHTML=html;
+      const here=window.location.pathname.replace(/\/$/,'')||'/';
+      for(const a of tmp.querySelectorAll('a')){ const href=a.getAttribute('href');
+        if(href===here)a.classList.add('active'); nav.insertBefore(a,pill); }
+    }catch(e){console.error('Nav load failed:',e)}
+  }
+
+  const TOOLS=[
+    {path:'/audit.html',          ico:'🔎', title:'Amazon Inventory Audit', desc:'Compare Amazon vs Shopify stock and flag every SKU that\'s out of sync.'},
+    {path:'/lookout.html',        ico:'📡', title:'FBA Lookout',           desc:'Spot SKUs at risk of running out at FBA before they go dark.'},
+    {path:'/planner.html',        ico:'📈', title:'Demand Planner',        desc:'Forecast how many units to order for any style, broken out by size.'},
+    {path:'/sku.html',            ico:'🔢', title:'SKU Lookup',            desc:'Pull sales and stock history for any individual SKU.'},
+    {path:'/cannibalization.html',ico:'🥧', title:'Cannibalization',       desc:'See which products are stealing sales from each other.'},
+    {path:'/todo.html',           ico:'✅', title:'To-Do',                 desc:'Your personal running task list.'},
+  ];
+
+  function renderTools(role){
+    const grid=document.getElementById('tool-grid');
+    const allowed=TOOLS.filter(t=> (window.AuthApp && typeof window.AuthApp.isAllowed==='function') ? window.AuthApp.isAllowed(role,t.path) : true );
+    if(!allowed.length){ grid.outerHTML='<div class="empty">No tools available for your role.</div>'; return; }
+    grid.innerHTML=allowed.map(t=>`
+      <a class="card" href="${t.path}">
+        <div class="ico">${t.ico}</div>
+        <div class="ct">${t.title}</div>
+        <div class="cd">${t.desc}</div>
+      </a>`).join('');
+  }
+
+  window.onAuthReady=function(role){ loadSharedNav(); renderTools(role); };
+</script>
+</body>
+</html>
