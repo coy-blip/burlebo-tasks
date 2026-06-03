@@ -68,6 +68,8 @@
     '/report.html':         { coy: 'edit',                   admin: 'edit'                   },
     '/lookout.html':        { coy: 'edit',                   admin: 'edit'                   },
     '/planner.html':        { coy: 'edit',                   admin: 'edit'                   },
+    '/audit.html':          { coy: 'edit',                   admin: 'edit'                   },
+    '/tools.html':          { coy: 'edit',                   admin: 'edit', employee: 'edit' },
   };
 
   // Human-readable page names — matches the labels in nav.html so the
@@ -84,6 +86,8 @@
     '/shipment.html':       'FBA Shipment',
     '/lookout.html':        'FBA Lookout',
     '/planner.html':        'Demand Planner',
+    '/audit.html':          'Amazon Inventory Audit',
+    '/tools.html':          'Tools',
     '/sku.html':            'SKU Lookup',
     '/report.html':         'Big Picture',
     '/cannibalization.html':'Cannibalization',
@@ -98,7 +102,7 @@
     '/index.html', '/dashboard.html', '/snapshot.html', '/upload.html',
     '/analytics.html', '/ads.html', '/profit.html', '/inventory.html',
     '/shipment.html', '/lookout.html', '/planner.html', '/sku.html', '/report.html',
-    '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
+    '/tools.html', '/audit.html', '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
   ];
   function pagesForRole(role) {
     const out = [];
