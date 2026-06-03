@@ -223,6 +223,23 @@
     return MENS_SIZES;
   }
 
+  // OOS detection config:
+  //   - measure velocity over a recent window
+  //   - a run of >= OOS_RUN_MIN consecutive zero-sale days = a stockout, dropped from the denominator
+  const OOS_WINDOW_DAYS = 30;   // window for the in-stock (OOS-corrected) rate
+  const RECENT_WINDOW_DAYS = 7; // window for the recency nudge
+  const OOS_RUN_MIN = 3;        // consecutive zero days that count as out-of-stock
+
+  // OOS-aware blend: start from the in-stock 30d rate, nudge up only if the
+  // recent in-stock pace is clearly hotter (capped). Same shape as the old
+  // calcVelocity, but fed OOS-corrected per-day rates instead of calendar averages.
+  function smartFrom(base, recent) {
+    if (base <= 0) return recent || 0;
+    let vel = base;
+    if (recent >= base * 1.25) vel = base * 0.65 + Math.min(recent, base * 1.5) * 0.35;
+    return vel;
+  }
+
   // Blended velocity (same shape as inventory.html's calcVelocity)
   function calcVelocity(u7, u30, daysInFba) {
     if (daysInFba && daysInFba >= 30) {
@@ -313,6 +330,47 @@
         for (const [ds, u] of dm.entries()) { const d = parseISO(ds); if (d && daysBetween(d, latestDate) < days) t += u; }
         return t;
       }
+      // OOS-corrected stats for one SKU over the last `windowDays`.
+      // Builds the full daily series from max(latest-window+1, firstSale) → latest,
+      // treats any run of >= OOS_RUN_MIN consecutive zero-sale days as a stockout,
+      // and divides units by the remaining in-stock days. Pre-launch days are
+      // excluded by clamping the window start to the SKU's first sale date.
+      function inStockStats(sku, windowDays) {
+        const dm = skuDateMap.get(sku);
+        if (!dm || !latestDate) return { units: 0, totalDays: 0, inStockDays: 0, oosDays: 0, rate: 0 };
+        const first = skuFirst.get(sku);
+        let start = new Date(latestDate);
+        start.setUTCDate(start.getUTCDate() - (windowDays - 1));
+        if (first && first.getTime() > start.getTime()) start = new Date(first);
+        const totalDays = daysBetween(start, latestDate) + 1;
+        if (totalDays <= 0) return { units: 0, totalDays: 0, inStockDays: 0, oosDays: 0, rate: 0 };
+        const series = [];
+        for (let k = 0; k < totalDays; k++) {
+          const d = new Date(start); d.setUTCDate(d.getUTCDate() + k);
+          series.push(dm.get(toISO(d)) || 0);
+        }
+        // sum zero-runs of length >= OOS_RUN_MIN
+        let oos = 0, i = 0;
+        while (i < series.length) {
+          if (series[i] === 0) {
+            let j = i; while (j < series.length && series[j] === 0) j++;
+            const run = j - i;
+            if (run >= OOS_RUN_MIN) oos += run;
+            i = j;
+          } else i++;
+        }
+        const units = series.reduce((a, b) => a + b, 0);
+        const inStockDays = totalDays - oos;
+        // Guard: if a SKU looks "out of stock" more than 60% of the window, it's
+        // more likely an intermittent slow-seller than a stocked-out fast mover —
+        // so DON'T divide by the few selling days (that would overstate it).
+        // Fall back to the plain calendar rate and mark it as not corrected.
+        let rate, applied;
+        if (inStockDays <= 0) { rate = 0; applied = false; }
+        else if (oos > 0 && oos / totalDays <= 0.6) { rate = units / inStockDays; applied = true; }
+        else { rate = units / totalDays; applied = false; }
+        return { units, totalDays, inStockDays, oosDays: oos, rate, applied };
+      }
 
       // FBA stock by clean sku (only true FBA listings)
       const invMap = new Map();
@@ -333,10 +391,13 @@
         if (inv && inv.product_name && !st.name) st.name = inv.product_name;
         const first = skuFirst.get(sku);
         if (first && (!st.latest || first < st.latest)) st.latest = first;
+        const is30 = inStockStats(sku, OOS_WINDOW_DAYS);
+        const is7  = inStockStats(sku, RECENT_WINDOW_DAYS);
         st.sizes[size] = {
           size,
           u7:  shipped(sku, 7),  u14: shipped(sku, 14), u30: shipped(sku, 30),
           u60: shipped(sku, 60), u90: shipped(sku, 90),
+          isRate30: is30.rate, isRate7: is7.rate, oosDays30: (is30.applied ? is30.oosDays : 0), inStockDays30: is30.inStockDays,
           on_hand: inv ? (inv.on_hand || 0) : 0,
           inbound: inv ? (inv.inbound_total || 0) : 0,
         };
@@ -426,11 +487,19 @@
     const sum = k => sizes.reduce((a,s) => a + (s[k]||0), 0);
     const U7 = sum('u7'), U14 = sum('u14'), U30 = sum('u30'), U60 = sum('u60'), U90 = sum('u90');
     const daysInFba = st.latest ? (daysBetween(st.latest, parseISO(LATEST_ISO)) + 1) : null;
+    const baseIS = sum('isRate30');   // OOS-corrected 30d rate (per-size, summed)
+    const recentIS = sum('isRate7');  // OOS-corrected recent rate, for the nudge
     const rates = {
       t7:  U7/7,  t14: U14/14, t30: U30/30, t60: U60/60,
-      smart: calcVelocity(U7, U30, daysInFba),
+      instock: baseIS,
+      smart: smartFrom(baseIS, recentIS),
     };
     const stockTotal = sizes.reduce((a,s) => a + (s.on_hand||0), 0);
+    // OOS flag: which sizes had stockout stretches removed, and how many days
+    const oosSizes = Object.entries(st.sizes)
+      .filter(([,s]) => (s.oosDays30||0) > 0)
+      .map(([sz,s]) => ({ size: sz, days: s.oosDays30 }))
+      .sort((a,b) => b.days - a.days);
 
     // default mix from T30 per size (fallback T60 -> T90 -> T7 -> even)
     const order = sizeOrderFor(st.type);
@@ -450,7 +519,7 @@
     if (mb) { const tot = sizes.reduce((a,s)=>a+(s[mb]||0),0); present.forEach(sz => mix[sz] = (st.sizes[sz][mb]||0)/tot*100); }
     else { present.forEach(sz => mix[sz] = 100/present.length); }
 
-    SEL = { st, present, rates, daysInFba, stockTotal, mix, mixBasisLabel: mb ? mb.toUpperCase().replace('U','T') : 'even', defaultRate: (rates.smart || rates.t30 || rates.t7 || 0) };
+    SEL = { st, present, rates, daysInFba, stockTotal, oosSizes, mix, mixBasisLabel: mb ? mb.toUpperCase().replace('U','T') : 'even', defaultRate: (rates.smart || rates.instock || rates.t30 || rates.t7 || 0) };
     renderDetail();
     // default the plan rate
     const ri = document.getElementById('p-rate');
@@ -461,18 +530,25 @@
   function renderDetail() {
     if (!SEL) return;
     const r = SEL.rates;
-    const newish = SEL.daysInFba != null && SEL.daysInFba < 35;
+    const newish = SEL.daysInFba != null && SEL.daysInFba < 14;
+    const oos = SEL.oosSizes || [];
+    const oosWarn = oos.length
+      ? `<br><span class="warn">🟠 OOS-corrected — dropped stockout stretches (≥${OOS_RUN_MIN} consecutive zero-sale days, last ${OOS_WINDOW_DAYS}d) from: ${oos.map(o => escapeHtml(o.size) + ' (' + o.days + 'd)').join(', ')}. The In-stock &amp; Smart rates divide by in-stock days only, so these sizes aren't under-counted.</span>`
+      : '';
     document.getElementById('p-detail').innerHTML = `
       <div class="panel">
         <div class="panel-title">2 · Demand rate &amp; buffer</div>
         <div class="info-line">
-          Trailing in-stock velocity for <b>${escapeHtml(SEL.st.style)}</b>:
+          <b>${escapeHtml(SEL.st.style)}</b> &nbsp;raw calendar avg:
           <span class="pill-rate">T7 ${fmt1(r.t7)}/day</span>
           <span class="pill-rate">T30 ${fmt1(r.t30)}/day</span>
           <span class="pill-rate">T60 ${fmt1(r.t60)}/day</span>
-          <span class="pill-rate">Smart ${fmt1(r.smart)}/day</span>
-          · current FBA stock <b>${fmtN(SEL.stockTotal)}</b>
-          ${newish ? `<br><span class="warn">⚠ Only ~${SEL.daysInFba} days of sales history — trailing numbers may understate true demand if it ramped or stocked out. Set the plan rate by hand.</span>` : ''}
+          &nbsp;·&nbsp;OOS-corrected:
+          <span class="pill-rate" style="background:rgba(74,222,128,0.16);color:var(--green);">In-stock ${fmt1(r.instock)}/day</span>
+          <span class="pill-rate" style="background:rgba(255,107,53,0.16);color:var(--accent);">Smart ${fmt1(r.smart)}/day</span>
+          &nbsp;·&nbsp;current FBA stock <b>${fmtN(SEL.stockTotal)}</b>
+          ${oosWarn}
+          ${newish ? `<br><span class="warn">⚠ Only ~${SEL.daysInFba} days of sales history — set the plan rate by hand if it's still ramping.</span>` : ''}
         </div>
         <div class="ctrl-grid" style="margin-top:14px;">
           <div class="field">
@@ -483,11 +559,12 @@
           <div class="field">
             <label>Prefill from</label>
             <select id="p-basis" onchange="applyBasis()">
-              <option value="smart">Smart blend</option>
-              <option value="t7">T7 avg</option>
-              <option value="t14">T14 avg</option>
-              <option value="t30" selected>T30 avg</option>
-              <option value="t60">T60 avg</option>
+              <option value="smart" selected>Smart (OOS-corrected)</option>
+              <option value="instock">In-stock 30d (OOS-corr)</option>
+              <option value="t7">T7 avg (raw)</option>
+              <option value="t14">T14 avg (raw)</option>
+              <option value="t30">T30 avg (raw)</option>
+              <option value="t60">T60 avg (raw)</option>
             </select>
             <div class="hint">Pick a basis to refill the rate.</div>
           </div>
