@@ -67,6 +67,7 @@
     '/profit.html':         { coy: 'edit',                   admin: 'edit'                   },
     '/report.html':         { coy: 'edit',                   admin: 'edit'                   },
     '/lookout.html':        { coy: 'edit',                   admin: 'edit'                   },
+    '/planner.html':        { coy: 'edit',                   admin: 'edit'                   },
   };
 
   // Human-readable page names — matches the labels in nav.html so the
@@ -82,6 +83,7 @@
     '/inventory.html':      'FBA Inventory',
     '/shipment.html':       'FBA Shipment',
     '/lookout.html':        'FBA Lookout',
+    '/planner.html':        'Demand Planner',
     '/sku.html':            'SKU Lookup',
     '/report.html':         'Big Picture',
     '/cannibalization.html':'Cannibalization',
@@ -95,7 +97,7 @@
   const PAGE_ORDER = [
     '/index.html', '/dashboard.html', '/snapshot.html', '/upload.html',
     '/analytics.html', '/ads.html', '/profit.html', '/inventory.html',
-    '/shipment.html', '/lookout.html', '/sku.html', '/report.html',
+    '/shipment.html', '/lookout.html', '/planner.html', '/sku.html', '/report.html',
     '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
   ];
   function pagesForRole(role) {
