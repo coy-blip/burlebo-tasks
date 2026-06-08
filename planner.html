@@ -457,6 +457,17 @@
           <button class="btn sm" onclick="setWindow('next90')">Next 90 days</button>
           <button class="btn sm" onclick="setWindow('next180')">Next 6 months</button>
         </div>
+        <div class="row-inline" style="margin-top:12px;border-top:1px solid var(--border,rgba(255,255,255,0.08));padding-top:12px;">
+          <span class="ctrl-label" style="font-size:12px;color:var(--text-dim);">Export all styles:</span>
+          <label style="font-size:12px;color:var(--text-dim);">YoY %
+            <input type="number" id="exp-growth" value="25" step="5" style="width:62px;margin-left:4px;">
+          </label>
+          <label style="font-size:12px;color:var(--text-dim);">Buffer wk
+            <input type="number" id="exp-buffer" value="2" min="0" step="1" style="width:62px;margin-left:4px;">
+          </label>
+          <button class="btn sm" onclick="exportAll()">⬇ Export all (CSV)</button>
+          <span class="hint" style="margin:0;">Uses the window above · one row per style/size with forecast, current FBA, and net-to-send.</span>
+        </div>
       </div>
 
       <div id="p-detail"></div>
@@ -694,6 +705,90 @@
     SEL.present.forEach(sz => { const el = document.getElementById('mix-' + cssId(sz)); if (el) el.value = Math.round((SEL.mix[sz]||0)*100)/100; });
     recompute();
   }
+  // ============================================================================
+  // Export — all styles for the current window (dependency-free CSV).
+  // Mirrors the per-style math in onStyle()/recompute(), so the file matches
+  // what you'd see clicking each style without hand-editing the rate or mix.
+  // ============================================================================
+  function csvCell(v) {
+    if (v == null) v = '';
+    v = String(v);
+    if (/[",\n]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
+    return v;
+  }
+
+  function styleDefaults(st) {
+    const sizes = Object.values(st.sizes);
+    const sum = k => sizes.reduce((a, s) => a + (s[k] || 0), 0);
+    const baseIS = sum('isRate30'), recentIS = sum('isRate7');
+    const rates = { t7: sum('u7')/7, t30: sum('u30')/30, t60: sum('u60')/60, instock: baseIS, smart: smartFrom(baseIS, recentIS) };
+    const defaultRate = (rates.smart || rates.instock || rates.t30 || rates.t7 || 0);
+    const order = sizeOrderFor(st.type);
+    const present = Object.keys(st.sizes).sort((a, b) => {
+      const ra = order.indexOf(a), rb = order.indexOf(b);
+      return (ra === -1 ? 999 : ra) - (rb === -1 ? 999 : rb);
+    });
+    let mb = null;
+    for (const k of ['u30','u60','u90','u7']) { if (sizes.reduce((a,s)=>a+(s[k]||0),0) > 0) { mb = k; break; } }
+    const mix = {};
+    if (mb) { const tot = sizes.reduce((a,s)=>a+(s[mb]||0),0); present.forEach(sz => mix[sz] = (st.sizes[sz][mb]||0)/tot*100); }
+    else present.forEach(sz => mix[sz] = 100/present.length);
+    return { present, defaultRate, mix };
+  }
+
+  function exportAll() {
+    const sISO = document.getElementById('p-start').value;
+    const eISO = document.getElementById('p-end').value;
+    const sD = parseISO(sISO), eD = parseISO(eISO);
+    let days = (sD && eD) ? daysBetween(sD, eD) + 1 : 0;
+    if (days <= 0) { alert('Set a valid window (start and end dates) before exporting.'); return; }
+    const growth = parseFloat(document.getElementById('exp-growth').value) || 0;
+    const bufW   = parseFloat(document.getElementById('exp-buffer').value) || 0;
+
+    const header = ['Category','Style','Product Name','Type','Size','Mix %','Plan Rate/day','YoY Growth %','Buffer (wk)','Window Start','Window End','Window Days','Forecast Units','In FBA Now','Net To Send','Style Total Forecast','Style Total In FBA','Style Total To Send'];
+    const lines = [header.map(csvCell).join(',')];
+
+    const styleList = Object.values(STYLES).sort((a, b) => (a.group + a.style).localeCompare(b.group + b.style));
+    for (const st of styleList) {
+      const d = styleDefaults(st);
+      const base = Math.round(d.defaultRate * 10) / 10;   // match the rounded rate shown in the UI
+      const rate = base * (1 + growth/100);
+      const subtotal = rate * days + rate * bufW * 7;
+      const rounded = d.present.map(sz => {
+        const u = subtotal * (d.mix[sz]||0) / 100;
+        return { sz, units: Math.floor(u), frac: u - Math.floor(u) };
+      });
+      let remainder = Math.round(subtotal) - rounded.reduce((a,x)=>a+x.units,0);
+      rounded.sort((a,b)=>b.frac-a.frac);
+      for (let i = 0; i < rounded.length && remainder > 0; i++) { rounded[i].units += 1; remainder--; }
+      const unitsBySize = {}; rounded.forEach(x => unitsBySize[x.sz] = x.units);
+
+      let stF = 0, stStock = 0, stSend = 0;
+      const sizeRows = d.present.map(sz => {
+        const f = unitsBySize[sz] || 0;
+        const stock = st.sizes[sz].on_hand || 0;
+        const send = Math.max(0, f - stock);
+        stF += f; stStock += stock; stSend += send;
+        return { sz, mix: d.mix[sz]||0, f, stock, send };
+      });
+      for (const row of sizeRows) {
+        lines.push([
+          st.group, st.style, st.name, st.type, row.sz,
+          Math.round(row.mix*100)/100, Math.round(rate*10)/10, growth, bufW,
+          sISO, eISO, days, row.f, row.stock, row.send, stF, stStock, stSend
+        ].map(csvCell).join(','));
+      }
+    }
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Burlebo_Demand_Plan_${sISO}_to_${eISO}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function cssId(sz) { return String(sz).replace(/[^a-zA-Z0-9]/g, '_'); }
 </script>
 </body>
