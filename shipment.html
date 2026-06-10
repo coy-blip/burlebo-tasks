@@ -417,6 +417,7 @@
         units_to_ship: unitsToShip,
         status,
         transfer_amount: transfer > 0 ? transfer : null,
+        ecom, wholesale,
         recommended,
         current_inv: rec.inv,
         in_flight: rec.in_flight,
@@ -639,7 +640,10 @@
 
     html += `<div class="section-hdr">
       <div class="section-title">Shipment List</div>
-      <button class="btn primary" onclick="exportShipment()">⬇️ Export XLSX</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="exportTransfer()">⬇️ Export Transfer</button>
+        <button class="btn primary" onclick="exportShipment()">⬇️ Export XLSX</button>
+      </div>
     </div>`;
 
     html += '<div class="table-wrap"><table><thead><tr>';
@@ -656,8 +660,8 @@
         <td class="mono">FBA-${r.shopify_sku}</td>
         <td class="mono">${r.shopify_sku}</td>
         <td class="r"><input type="number" class="units-input" min="0" value="${r.units_to_ship}" onchange="updateUnits(${i}, this.value)" /></td>
-        <td>${statusBadge(r.status)}</td>
-        <td class="r">${r.transfer_amount ? fmtN(r.transfer_amount) : '—'}</td>
+        <td id="status-${i}">${statusBadge(r.status)}</td>
+        <td class="r" id="transfer-${i}">${r.transfer_amount ? fmtN(r.transfer_amount) : '—'}</td>
         <td class="r">${fmtN(r.current_inv)}</td>
         <td class="r" style="color: var(--blue);">${r.in_flight > 0 ? fmtN(r.in_flight) : '—'}</td>
         <td class="r">${r.days_supply ? r.days_supply.toFixed(1) + 'd' : '0d'}</td>
@@ -802,8 +806,23 @@
 
   function updateUnits(i, val) {
     const n = parseInt(val) || 0;
-    window._shipRows[i].units_to_ship = n;
-    // Update total KPI without full re-render
+    const row = window._shipRows[i];
+    row.units_to_ship = n;
+
+    // Recompute transfer + status off the new quantity (same logic as build).
+    const transfer = calcTransfer(row.ecom || 0, row.wholesale || 0, n);
+    row.transfer_amount = transfer > 0 ? transfer : null;
+    const isPartial = n < row.recommended;
+    if (transfer > 0) row.status = isPartial ? 'Partial Shipment - Needs Transfer' : 'Needs Transfer';
+    else              row.status = isPartial ? 'Partial Shipment - Good To Go'    : 'Good To Go';
+
+    // Update the Transfer + Status cells in place (no full re-render, keeps focus).
+    const tEl = document.getElementById('transfer-' + i);
+    if (tEl) tEl.textContent = transfer > 0 ? fmtN(transfer) : '—';
+    const sEl = document.getElementById('status-' + i);
+    if (sEl) sEl.innerHTML = statusBadge(row.status);
+
+    // Update total KPI.
     const total = window._shipRows.reduce((s, r) => s + (parseInt(r.units_to_ship) || 0), 0);
     const el = document.getElementById('ship-total-kpi');
     if (el) el.textContent = fmtN(total);
@@ -849,6 +868,43 @@
       ? window._shipData.run_date
       : toISO(new Date());
     XLSX.writeFile(wb, `FBA_Shipment_${dateStr}.xlsx`);
+  }
+
+  // Export the transfer file matching the required upload template EXACTLY:
+  //
+  //   Origin location,Destination location,Origin channel,Destination channel,sku,quantity
+  //   HQ,HQ,Wholesale,eCommerce,<shopify_sku>,<transfer_amount>
+  //
+  // Only the sku and quantity change per row; the four leading columns are
+  // always constant. Only rows with a transfer > 0 are included, and the
+  // quantities reflect any edits made to the shipment (transfer_amount is
+  // recomputed live in updateUnits).
+  function exportTransfer() {
+    const rows = window._shipRows;
+    if (!rows || rows.length === 0) return;
+
+    const header = 'Origin location,Destination location,Origin channel,Destination channel,sku,quantity';
+    const lines = [header];
+    for (const r of rows) {
+      const qty = parseInt(r.transfer_amount, 10) || 0;
+      if (qty <= 0) continue;
+      lines.push(`HQ,HQ,Wholesale,eCommerce,${r.shopify_sku},${qty}`);
+    }
+
+    if (lines.length === 1) { alert('No transfers needed — nothing to export.'); return; }
+
+    const dateStr = window._shipData && window._shipData.run_date
+      ? window._shipData.run_date
+      : toISO(new Date());
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `FBA_Transfer_${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 </script>
 
