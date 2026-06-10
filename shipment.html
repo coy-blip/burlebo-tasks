@@ -207,6 +207,41 @@
   const OOS_THRESHOLD = 10;
   const ECOM_POST_SHIPMENT_TARGET_PCT = 0.40;
 
+  // In-flight expiry. Default window is 48h after upload, but each shipment's
+  // duration can be adjusted after the fact via a per-card control. Overrides
+  // are stored in localStorage (this browser only) keyed by shipment_id, as a
+  // total number of hours from upload. Setting 0 expires a shipment immediately.
+  const INFLIGHT_DEFAULT_HOURS = 48;
+  // We fetch a generous window from Supabase, then filter client-side by each
+  // shipment's effective duration — so an override can extend a shipment past
+  // 48h and it'll still be pulled. Anything older than this ceiling is dropped.
+  const INFLIGHT_FETCH_CEILING_HOURS = 24 * 30;
+  const INFLIGHT_OVERRIDE_KEY = 'burlebo_inflight_overrides';
+
+  function getInflightOverrides() {
+    try { return JSON.parse(localStorage.getItem(INFLIGHT_OVERRIDE_KEY)) || {}; }
+    catch { return {}; }
+  }
+  function inflightHoursFor(shipmentId) {
+    const o = getInflightOverrides();
+    const v = o[shipmentId];
+    return (v === undefined || v === null) ? INFLIGHT_DEFAULT_HOURS : v;
+  }
+  function isInflightOverridden(shipmentId) {
+    const o = getInflightOverrides();
+    return o[shipmentId] !== undefined && o[shipmentId] !== null;
+  }
+  function setInflightOverride(shipmentId, hours) {
+    const o = getInflightOverrides();
+    o[shipmentId] = Math.max(0, parseInt(hours, 10) || 0);
+    localStorage.setItem(INFLIGHT_OVERRIDE_KEY, JSON.stringify(o));
+  }
+  function clearInflightOverride(shipmentId) {
+    const o = getInflightOverrides();
+    delete o[shipmentId];
+    localStorage.setItem(INFLIGHT_OVERRIDE_KEY, JSON.stringify(o));
+  }
+
   function stripFba(sku) {
     const s = String(sku || '').toUpperCase().trim();
     if (s.startsWith('FBA2-')) return s.slice(5);
@@ -515,34 +550,52 @@
         'sku, channel, location, on_hand_avail',
         [['location', 'eq', 'HQ']]);
 
-      // 5. In-flight shipments (uploaded shipment-sent files less than 48h old).
-      //    Each row = 1 SKU/quantity from a shipment file. We sum by SKU for
-      //    the shipment-builder math, AND we group by shipment_id so the UI
-      //    can show "what's in flight right now."
-      const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-      const inFlightRows = await fetchPaged('shipments_sent',
+      // 5. In-flight shipments. Fetch a generous window, then group by shipment
+      //    and keep only those still active under their effective duration
+      //    (default 48h, or a per-shipment localStorage override). This lets the
+      //    duration be adjusted after the fact — extended, shortened, or set to
+      //    0 to expire immediately.
+      const fetchCutoff = new Date(Date.now() - INFLIGHT_FETCH_CEILING_HOURS * 3600 * 1000).toISOString();
+      const inFlightRowsRaw = await fetchPaged('shipments_sent',
         'shipment_id, sku, raw_sku, units, filename, uploaded_at',
-        [['uploaded_at', 'gte', cutoff]]);
-      const inFlightBySku = new Map();
-      const inFlightByShipment = new Map();  // shipment_id -> { filename, uploaded_at, rows: [{sku, raw_sku, units}] }
-      for (const r of inFlightRows) {
-        const sku = String(r.sku || '').toUpperCase();
-        if (!sku) continue;
-        inFlightBySku.set(sku, (inFlightBySku.get(sku) || 0) + (r.units || 0));
+        [['uploaded_at', 'gte', fetchCutoff]]);
 
+      // Group every fetched row by shipment first, so expiry is decided per
+      // shipment (using the most recent uploaded_at across its rows).
+      const inFlightGroups = new Map();
+      for (const r of inFlightRowsRaw) {
         const sid = r.shipment_id || 'unknown';
-        if (!inFlightByShipment.has(sid)) {
-          inFlightByShipment.set(sid, {
+        if (!inFlightGroups.has(sid)) {
+          inFlightGroups.set(sid, {
             shipment_id: sid,
             filename: r.filename || '(no filename)',
             uploaded_at: r.uploaded_at,
             rows: [],
           });
         }
-        const grp = inFlightByShipment.get(sid);
-        // Use the most recent uploaded_at across rows in case they differ
+        const grp = inFlightGroups.get(sid);
         if (r.uploaded_at && r.uploaded_at > grp.uploaded_at) grp.uploaded_at = r.uploaded_at;
-        grp.rows.push({ sku, raw_sku: r.raw_sku, units: r.units || 0 });
+        const sku = String(r.sku || '').toUpperCase();
+        if (sku) grp.rows.push({ sku, raw_sku: r.raw_sku, units: r.units || 0 });
+      }
+
+      // Keep only shipments still inside their (possibly overridden) window, and
+      // build the per-SKU totals from those active shipments only.
+      const nowMs = Date.now();
+      const inFlightBySku = new Map();
+      const inFlightByShipment = new Map();
+      let inFlightActiveRows = 0;
+      for (const grp of inFlightGroups.values()) {
+        const hours = inflightHoursFor(grp.shipment_id);
+        const expiresMs = new Date(grp.uploaded_at).getTime() + hours * 3600 * 1000;
+        if (nowMs >= expiresMs) continue;       // expired under its effective window
+        grp.duration_hours = hours;             // stash for the UI controls
+        grp.overridden = isInflightOverridden(grp.shipment_id);
+        inFlightByShipment.set(grp.shipment_id, grp);
+        for (const r of grp.rows) {
+          inFlightBySku.set(r.sku, (inFlightBySku.get(r.sku) || 0) + (r.units || 0));
+          inFlightActiveRows++;
+        }
       }
 
       // Sanity check: if a critical dataset is empty when the others aren't,
@@ -552,7 +605,7 @@
         sales_rows: salesWindow.length,
         fba_rows: fba.length,
         blb_rows: blb.length,
-        in_flight_rows: inFlightRows.length,
+        in_flight_rows: inFlightActiveRows,
         in_flight_skus: inFlightBySku.size,
       };
       const empty = [];
@@ -650,7 +703,7 @@
     html += '<th style="width:36px;"></th>';
     html += '<th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units to Ship</th>';
     html += '<th>Status</th><th class="r">Transfer</th>';
-    html += '<th class="r">FBA Stock</th><th class="r" title="From shipment files uploaded as sent in the last 48h">In Flight</th>';
+    html += '<th class="r">FBA Stock</th><th class="r" title="Units from shipment files still within their in-flight window (default 48h, adjustable per shipment)">In Flight</th>';
     html += '<th class="r">Days Supply</th><th class="r">Recommended</th>';
     html += '</tr></thead><tbody id="ship-tbody">';
 
@@ -705,7 +758,7 @@
   function renderInFlight(shipments) {
     let html = `<div class="section-hdr">
       <div class="section-title" style="color: var(--blue);">🚚 In-Flight Shipments</div>
-      <div class="section-sub">${shipments.length} shipment${shipments.length===1?'':'s'} uploaded in the last 48 hours — units are added to FBA stock for shipment math until they expire.</div>
+      <div class="section-sub">${shipments.length} shipment${shipments.length===1?'':'s'} currently in flight — units are added to FBA stock for shipment math until each one expires. Adjust a shipment's duration below; set it to 0 to expire it now.</div>
     </div>`;
 
     html += '<div class="inflight-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:24px;">';
@@ -713,8 +766,12 @@
       const totalUnits = s.rows.reduce((t, r) => t + (r.units || 0), 0);
       const skuCount = s.rows.length;
       const uploadedAgo = formatTimeAgo(s.uploaded_at);
-      const hoursLeft = formatHoursLeft(s.uploaded_at);
+      const durationHours = (s.duration_hours != null) ? s.duration_hours : INFLIGHT_DEFAULT_HOURS;
+      const hoursLeft = formatHoursLeft(s.uploaded_at, durationHours);
       const safeId = 'inflight-' + i;
+      const customTag = s.overridden
+        ? ` · <span style="color:var(--blue);">custom ${durationHours}h</span>`
+        : '';
 
       html += `<div class="inflight-card" style="border:1px solid var(--border); border-radius: var(--radius); background: var(--panel);">
         <div onclick="toggleInFlight('${safeId}')" style="cursor:pointer; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
@@ -722,10 +779,10 @@
             <span id="${safeId}-arrow" style="color:var(--text-dim); font-size:11px; transition:transform 0.15s;">▶</span>
             <div style="min-width:0;">
               <div class="mono" style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(s.filename)}</div>
-              <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">Uploaded ${uploadedAgo} · ${hoursLeft}</div>
+              <div style="font-size:11px; color:var(--text-dim); margin-top:2px;">Uploaded ${uploadedAgo} · ${hoursLeft}${customTag}</div>
             </div>
           </div>
-          <div style="display:flex; gap:18px; flex-shrink:0;">
+          <div style="display:flex; gap:18px; flex-shrink:0; align-items:center;">
             <div style="text-align:right;">
               <div style="font-size:11px; color:var(--text-dim);">SKUs</div>
               <div style="font-size:14px; font-weight:600;">${fmtN(skuCount)}</div>
@@ -733,6 +790,16 @@
             <div style="text-align:right;">
               <div style="font-size:11px; color:var(--text-dim);">Units</div>
               <div style="font-size:14px; font-weight:600; color:var(--blue);">${fmtN(totalUnits)}</div>
+            </div>
+            <div style="text-align:right;" onclick="event.stopPropagation();">
+              <div style="font-size:11px; color:var(--text-dim);">Duration (h)</div>
+              <div style="display:flex; align-items:center; gap:4px; justify-content:flex-end; margin-top:2px;">
+                <input type="number" min="0" id="${safeId}-dur" value="${durationHours}"
+                  style="width:58px; padding:3px 6px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--panel-2); color:var(--text); font-family:inherit; font-size:12px; text-align:right;"
+                  onkeydown="if(event.key==='Enter'){applyInflightDuration(${i});}" />
+                <button class="btn" style="padding:3px 9px; font-size:11px;" onclick="applyInflightDuration(${i})">Set</button>
+                ${s.overridden ? `<button class="btn ghost" style="padding:3px 7px; font-size:11px;" title="Reset to ${INFLIGHT_DEFAULT_HOURS}h default" onclick="resetInflightDuration(${i})">↺</button>` : ''}
+              </div>
             </div>
           </div>
         </div>
@@ -767,11 +834,13 @@
     return `${diffDay}d ago`;
   }
 
-  // Hours remaining until this in-flight shipment expires (48h after upload).
-  function formatHoursLeft(iso) {
+  // Hours remaining until this in-flight shipment expires. Duration defaults to
+  // 48h after upload but can be overridden per shipment.
+  function formatHoursLeft(iso, durationHours) {
     if (!iso) return '';
+    const hours = (durationHours != null) ? durationHours : INFLIGHT_DEFAULT_HOURS;
     const then = new Date(iso).getTime();
-    const expiresAt = then + 48 * 3600 * 1000;
+    const expiresAt = then + hours * 3600 * 1000;
     const remainingMs = expiresAt - Date.now();
     if (remainingMs <= 0) return '<span style="color:var(--red);">expired</span>';
     const hoursLeft = Math.floor(remainingMs / 3600000);
@@ -779,6 +848,29 @@
     const display = hoursLeft >= 1 ? `${hoursLeft}h ${minsLeft}m` : `${minsLeft}m`;
     const color = hoursLeft < 6 ? 'var(--yellow)' : 'var(--text-dim)';
     return `<span style="color:${color};">${display} until expiration</span>`;
+  }
+
+  // Apply an edited duration (in hours) to an in-flight shipment. Persists to
+  // localStorage and rebuilds so the In Flight column, effective inventory, and
+  // recommendations all reflect the new window. 0 expires it immediately.
+  function applyInflightDuration(i) {
+    const ship = window._shipData && window._shipData.in_flight_shipments
+      ? window._shipData.in_flight_shipments[i] : null;
+    if (!ship) return;
+    const el = document.getElementById('inflight-' + i + '-dur');
+    if (!el) return;
+    const hours = Math.max(0, parseInt(el.value, 10) || 0);
+    setInflightOverride(ship.shipment_id, hours);
+    loadShipment();
+  }
+
+  // Drop the override and return this shipment to the 48h default.
+  function resetInflightDuration(i) {
+    const ship = window._shipData && window._shipData.in_flight_shipments
+      ? window._shipData.in_flight_shipments[i] : null;
+    if (!ship) return;
+    clearInflightOverride(ship.shipment_id);
+    loadShipment();
   }
 
   // Toggle the expanded detail table on an in-flight card.
