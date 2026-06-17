@@ -620,6 +620,18 @@
   }
   .tab-btn:hover { color: var(--text); }
   .tab-btn.active { color: var(--text); border-bottom-color: var(--text); }
+  .feed-badge { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 4px; margin-left:6px; border-radius:8px; background:#9B1C1C; color:#fff; font-size:10px; font-weight:600; line-height:1; }
+  .feed-list { display:flex; flex-direction:column; gap:8px; max-width:760px; }
+  .feed-day { font-size:12px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.04em; margin:14px 0 2px; }
+  .feed-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--surface); }
+  .feed-item.feed-new { border-color:var(--coy-border); background:var(--coy-bg); }
+  .feed-item-main { font-size:13px; color:var(--text); margin-bottom:4px; }
+  .feed-who { font-weight:600; }
+  .feed-group { font-weight:600; color:var(--coy); }
+  .feed-newdot { font-size:9px; font-weight:700; color:#fff; background:#9B1C1C; border-radius:4px; padding:1px 5px; margin-left:4px; vertical-align:middle; }
+  .feed-link { font-size:12px; color:var(--designer); word-break:break-all; text-decoration:none; }
+  .feed-link:hover { text-decoration:underline; }
+  .feed-time { font-size:11px; color:var(--text3); margin-top:3px; }
 
   /* COPYWRITING TAB */
   .cw-group {
@@ -764,6 +776,7 @@
         <button class="tab-btn active" id="tab-tracker" onclick="switchTab('tracker')">Tracker</button>
         <button class="tab-btn" id="tab-copywriting" onclick="switchTab('copywriting')">📄 Copywriting Docs</button>
         <button class="tab-btn" id="tab-ready" onclick="switchTab('ready')">✅ Ready for Designer</button>
+        <button class="tab-btn" id="tab-feed" onclick="switchTab('feed')" style="display:none;">📥 Designer Feed<span id="feed-badge" class="feed-badge" style="display:none;"></span></button>
       </div>
 
       <div id="tab-tracker-content">
@@ -783,6 +796,10 @@
 
       <div id="tab-ready-content" style="display:none;">
         <div id="ready-container"></div>
+      </div>
+
+      <div id="tab-feed-content" style="display:none;">
+        <div id="feed-container"></div>
       </div>
     </main>
   </div>
@@ -823,6 +840,7 @@ let products = [];
 let collapsed = {};
 let productCollapsed = {};
 let saving = false;
+let activityFeed = []; // [{ ts, group, idx, url, role, action }] — designer upload log
 
 async function loadData() {
   const { data, error } = await sb.from('tasks').select('id, data');
@@ -830,6 +848,7 @@ async function loadData() {
   for (const row of data) {
     if (row.id === 'state') taskState = row.data || {};
     if (row.id === 'products') products = row.data || [];
+    if (row.id === 'activity_feed') activityFeed = row.data || [];
   }
 
 }
@@ -959,11 +978,18 @@ function switchTab(tab) {
   document.getElementById('tab-tracker').className = 'tab-btn' + (tab === 'tracker' ? ' active' : '');
   document.getElementById('tab-copywriting').className = 'tab-btn' + (tab === 'copywriting' ? ' active' : '');
   document.getElementById('tab-ready').className = 'tab-btn' + (tab === 'ready' ? ' active' : '');
+  const feedBtn = document.getElementById('tab-feed');
+  if (feedBtn) feedBtn.className = 'tab-btn' + (tab === 'feed' ? ' active' : '');
   document.getElementById('tab-tracker-content').style.display = tab === 'tracker' ? 'block' : 'none';
   document.getElementById('tab-copywriting-content').style.display = tab === 'copywriting' ? 'block' : 'none';
   document.getElementById('tab-ready-content').style.display = tab === 'ready' ? 'block' : 'none';
+  const feedContent = document.getElementById('tab-feed-content');
+  if (feedContent) feedContent.style.display = tab === 'feed' ? 'block' : 'none';
   if (tab === 'copywriting') renderCopywritingTab();
   if (tab === 'ready') renderReadyTab();
+  if (tab === 'feed') { markFeedSeen(); renderFeedTab(); }
+  updatePageSub();
+  updateFeedBadge();
 }
 
 function renderReadyTab() {
@@ -1154,22 +1180,39 @@ function render() {
   const rdBtn = document.getElementById('tab-ready');
   if (rdBtn) rdBtn.style.display = 'inline-block';
 
+  // Designer Feed tab only for Coy
+  const feedBtn = document.getElementById('tab-feed');
+  if (feedBtn) feedBtn.style.display = role === 'coy' ? 'inline-block' : 'none';
+
   // If role switched away from a tab they can't see, reset to tracker
   if (role !== 'coy' && currentTab === 'copywriting') switchTab('tracker');
+  if (role !== 'coy' && currentTab === 'feed') switchTab('tracker');
 
   renderSidebar();
   renderStats();
   renderSections();
   if (currentTab === 'copywriting') renderCopywritingTab();
   if (currentTab === 'ready') renderReadyTab();
+  if (currentTab === 'feed') renderFeedTab();
 
+  updatePageSub();
+  updateFeedBadge();
+}
+
+function updatePageSub() {
   const sub = document.getElementById('page-sub');
-  if (sub) {
-    if (currentTab === 'copywriting') sub.textContent = 'Product groups missing a copywriting doc.';
-    else if (currentTab === 'ready') sub.textContent = 'Product groups ready for designer work.';
-    else if (selectedGroups.size === 0) sub.textContent = 'Select a product group from the left to get started.';
-    else sub.textContent = `Showing ${[...selectedGroups].join(', ')}${selectedPriorities.size > 0 ? ' · ' + [...selectedPriorities].map(p=>PRIORITIES[p]?.label||p).join(', ') + ' priority' : ''}`;
+  if (!sub) return;
+  if (currentTab === 'feed') { sub.textContent = 'Everything the designer has uploaded — newest first.'; return; }
+  if (currentTab === 'copywriting') { sub.textContent = 'Product groups missing a copywriting doc.'; return; }
+  if (currentTab === 'ready') { sub.textContent = 'Product groups ready for designer work.'; return; }
+  if (selectedGroups.size === 0 && selectedPriorities.size === 0) {
+    sub.textContent = 'Select a product group or priority from the left to get started.';
+    return;
   }
+  const parts = [];
+  if (selectedGroups.size > 0) parts.push([...selectedGroups].join(', '));
+  if (selectedPriorities.size > 0) parts.push([...selectedPriorities].map(p => PRIORITIES[p]?.label || p).join(', ') + ' priority');
+  sub.textContent = 'Showing ' + parts.join(' · ');
 }
 
 function renderStats() {
@@ -1312,8 +1355,11 @@ async function saveDropboxLinkAt(group, idx, val) {
   if (!link) return;
   if (!groupAssets[group]) groupAssets[group] = {};
   if (!groupAssets[group].dropboxLinks) groupAssets[group].dropboxLinks = [];
+  const prev = groupAssets[group].dropboxLinks[idx] || '';
+  if (link === prev) return; // no actual change — don't re-save or re-log
   groupAssets[group].dropboxLinks[idx] = link;
   await saveGroupAssets();
+  await logFeedEvent({ group, idx, url: link, role: role || 'unknown', action: prev ? 'updated' : 'added' });
   render();
 }
 
@@ -1340,6 +1386,67 @@ async function saveDropboxLink(group, val) {
 
 async function clearDropboxLink(group) {
   await clearDropboxLinkAt(group, 0);
+}
+
+// ---- Designer activity feed (Coy-only view) ----
+async function logFeedEvent(evt) {
+  const entry = { ts: new Date().toISOString(), ...evt };
+  activityFeed.push(entry);
+  if (activityFeed.length > 500) activityFeed = activityFeed.slice(-500); // keep the row small
+  setSyncStatus('syncing', 'Saving...');
+  const { error } = await sb.from('tasks').upsert({ id: 'activity_feed', data: activityFeed });
+  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
+  updateFeedBadge();
+}
+
+function feedUnreadCount() {
+  const last = localStorage.getItem('blb_feed_last_seen') || '';
+  return activityFeed.filter(e => (e.ts || '') > last).length;
+}
+
+function markFeedSeen() {
+  const latest = activityFeed.reduce((m, e) => ((e.ts || '') > m ? (e.ts || '') : m), '');
+  if (latest) localStorage.setItem('blb_feed_last_seen', latest);
+}
+
+function updateFeedBadge() {
+  const badge = document.getElementById('feed-badge');
+  if (!badge) return;
+  if (role !== 'coy') { badge.style.display = 'none'; return; }
+  const n = currentTab === 'feed' ? 0 : feedUnreadCount();
+  if (n > 0) { badge.textContent = n; badge.style.display = 'inline-flex'; }
+  else { badge.style.display = 'none'; }
+}
+
+function renderFeedTab() {
+  const container = document.getElementById('feed-container');
+  if (!container) return;
+  const events = [...activityFeed].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  if (events.length === 0) {
+    container.innerHTML = `<div class="empty" style="padding:32px;text-align:center;">No designer uploads yet. When a Dropbox link is pasted in, it shows up here — newest first.</div>`;
+    return;
+  }
+  const lastSeen = localStorage.getItem('blb_feed_last_seen') || '';
+  let html = '<div class="feed-list">';
+  let lastDay = null;
+  for (const e of events) {
+    const d = e.ts ? new Date(e.ts) : null;
+    const dayLabel = d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date';
+    if (dayLabel !== lastDay) { html += `<div class="feed-day">${dayLabel}</div>`; lastDay = dayLabel; }
+    const time = d ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+    const who = e.role === 'designer' ? 'Graphic Designer' : (e.role === 'coy' ? 'Coy' : (e.role || 'Someone'));
+    const isNew = (e.ts || '') > lastSeen;
+    const verb = e.action === 'updated' ? 'updated a Dropbox link on' : 'added a Dropbox link to';
+    const safeUrl = (e.url || '').replace(/"/g, '&quot;');
+    const safeGroup = (e.group || '—').replace(/</g, '&lt;');
+    html += `<div class="feed-item${isNew ? ' feed-new' : ''}">
+      <div class="feed-item-main"><span class="feed-who">${who}</span> ${verb} <span class="feed-group">${safeGroup}</span>${isNew ? ' <span class="feed-newdot">NEW</span>' : ''}</div>
+      <a class="feed-link" href="${safeUrl}" target="_blank" rel="noopener">🔗 ${safeUrl}</a>
+      <div class="feed-time">${time}</div>
+    </div>`;
+  }
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 const PRIORITIES = { high: { label: 'High', color: '#9B1C1C', bg: '#FDF2F2' }, medium: { label: 'Medium', color: '#92400E', bg: '#FFFBEB' }, low: { label: 'Low', color: '#057A55', bg: '#F0FAF4' } };
@@ -1437,15 +1544,19 @@ function togglePriorityFilter(pri) {
 }
 
 function getFilteredProducts() {
+  const groupActive = selectedGroups.size > 0;
+  const priActive = selectedPriorities.size > 0;
+  // Nothing selected at all → show nothing (unchanged starting state)
+  if (!groupActive && !priActive) return [];
   return getSortedProducts().filter(p => {
     const group = getProductGroup(p.name);
-    const groupMatch = selectedGroups.size === 0 ? false : selectedGroups.has(group);
-    const priMatch = selectedPriorities.size === 0 ? true : selectedPriorities.has(p.priority || 'none');
-    // If no groups selected, show nothing. If group selected, also apply priority filter
-    if (selectedGroups.size === 0) return false;
-    if (!groupMatch) return false;
-    if (selectedPriorities.size > 0 && !selectedPriorities.has(p.priority)) return false;
-    return true;
+    // Each ACTIVE filter type must match. An inactive filter (empty set) adds
+    // no constraint — so selecting a priority with no group still surfaces
+    // every product in that priority, and vice-versa. When both are active
+    // they narrow each other (group AND priority).
+    const groupPass = !groupActive || selectedGroups.has(group);
+    const priPass = !priActive || selectedPriorities.has(p.priority || 'none');
+    return groupPass && priPass;
   });
 }
 
@@ -1536,8 +1647,8 @@ function renderSections() {
       </div>`;
 
     if (isOpen) {
-      if (selectedGroups.size === 0) {
-        html += `<div class="empty">← Select a product group to view tasks.</div>`;
+      if (selectedGroups.size === 0 && selectedPriorities.size === 0) {
+        html += `<div class="empty">← Select a product group or priority to view tasks.</div>`;
       } else {
         const filtered = getFilteredProducts();
         if (filtered.length === 0) {
@@ -1986,6 +2097,7 @@ async function init() {
       if (payload.new.id === 'state') taskState = payload.new.data || {};
       if (payload.new.id === 'products') products = payload.new.data || [];
       if (payload.new.id === 'group_assets') groupAssets = payload.new.data || {};
+      if (payload.new.id === 'activity_feed') activityFeed = payload.new.data || [];
       // Don't render until auth has completed, otherwise role-conditional
       // rendering would crash with role = null.
       if (role) render();
