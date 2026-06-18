@@ -69,6 +69,7 @@
     '/lookout.html':        { coy: 'edit',                   admin: 'edit'                   },
     '/planner.html':        { coy: 'edit',                   admin: 'edit'                   },
     '/audit.html':          { coy: 'edit',                   admin: 'edit'                   },
+    '/boxcontent.html':     { coy: 'edit',                   admin: 'edit', employee: 'edit' },
     '/tools.html':          { coy: 'edit',                   admin: 'edit', employee: 'edit' },
   };
 
@@ -87,6 +88,7 @@
     '/lookout.html':        'FBA Lookout',
     '/planner.html':        'Demand Planner',
     '/audit.html':          'Amazon Inventory Audit',
+    '/boxcontent.html':     'FBA Box Content Filler',
     '/tools.html':          'Tools',
     '/sku.html':            'SKU Lookup',
     '/report.html':         'Big Picture',
@@ -102,7 +104,7 @@
     '/index.html', '/dashboard.html', '/snapshot.html', '/upload.html',
     '/analytics.html', '/ads.html', '/profit.html', '/inventory.html',
     '/shipment.html', '/lookout.html', '/planner.html', '/sku.html', '/report.html',
-    '/tools.html', '/audit.html', '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
+    '/tools.html', '/audit.html', '/boxcontent.html', '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
   ];
   function pagesForRole(role) {
     const out = [];
