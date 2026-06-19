@@ -40,6 +40,7 @@
     designer: { name: 'Graphic Designer',    password: 'Graphic',    cls: 'designer' },
     admin:    { name: 'Executive Admin',     password: 'Admin',      cls: 'admin'    },
     employee: { name: 'Employee',            password: 'Burlebo',    cls: 'employee' },
+    brooks:   { name: 'Brooks Loria',        password: 'BL',         cls: 'employee' },
   };
 
   // ---------------------------------------------------------------------------
@@ -56,8 +57,8 @@
     '/todo.html':           { coy: 'edit'                                                    },
     '/settings.html':       { coy: 'edit'                                                    },
     '/upload.html':         { coy: 'edit',                   admin: 'edit'                   },
-    '/inventory.html':      { coy: 'edit',                   admin: 'edit', employee: 'edit' },
-    '/shipment.html':       { coy: 'edit',                   admin: 'edit', employee: 'edit' },
+    '/inventory.html':      { coy: 'edit',                   admin: 'edit', employee: 'edit', brooks: 'edit' },
+    '/shipment.html':       { coy: 'edit',                   admin: 'edit', employee: 'edit', brooks: 'edit' },
     '/analytics.html':      { coy: 'edit',                   admin: 'edit', employee: 'edit' },
     '/sku.html':            { coy: 'edit',                   admin: 'edit', employee: 'edit' },
     '/snapshot.html':       { coy: 'edit',                   admin: 'edit'                   },
@@ -66,11 +67,11 @@
     '/cannibalization.html':{ coy: 'edit',                   admin: 'edit'                   },
     '/profit.html':         { coy: 'edit',                   admin: 'edit'                   },
     '/report.html':         { coy: 'edit',                   admin: 'edit'                   },
-    '/lookout.html':        { coy: 'edit',                   admin: 'edit'                   },
+    '/lookout.html':        { coy: 'edit',                   admin: 'edit', brooks: 'edit' },
     '/planner.html':        { coy: 'edit',                   admin: 'edit'                   },
-    '/audit.html':          { coy: 'edit',                   admin: 'edit'                   },
-    '/boxcontent.html':     { coy: 'edit',                   admin: 'edit', employee: 'edit' },
-    '/tools.html':          { coy: 'edit',                   admin: 'edit', employee: 'edit' },
+    '/audit.html':          { coy: 'edit',                   admin: 'edit', brooks: 'edit' },
+    '/boxcontent.html':     { coy: 'edit',                   admin: 'edit', employee: 'edit', brooks: 'edit' },
+    '/tools.html':          { coy: 'edit',                   admin: 'edit', employee: 'edit', brooks: 'edit' },
   };
 
   // Human-readable page names — matches the labels in nav.html so the
@@ -334,6 +335,7 @@
             <button class="auth-option" data-role="designer"> <span class="dot designer"></span> Graphic Designer    </button>
             <button class="auth-option" data-role="admin">    <span class="dot admin"></span>    Executive Admin     </button>
             <button class="auth-option" data-role="employee"> <span class="dot employee"></span> Employee            </button>
+            <button class="auth-option" data-role="brooks">    <span class="dot employee"></span> Brooks Loria        </button>
           </div>
           <div class="auth-pw" id="auth-pw-field">
             <input id="auth-pw-input" type="password" placeholder="Enter password" autocomplete="current-password">
