@@ -137,6 +137,10 @@
         </div>
       </div>
       <div class="hint" style="margin-top:8px">First number → Length by default (your sample reads 22 × 16 × 16, so L=22). Flip if the pack screen lists width first.</div>
+      <label class="row-inline" style="cursor:pointer;gap:8px">
+        <input type="checkbox" id="unlockChk" checked>
+        <span class="hint">Unlock sheet for editing — strips Amazon's password protection on the box-packing tab so you can hand-edit cells. Values still upload fine.</span>
+      </label>
       <div class="row-inline">
         <button class="btn primary" id="exportBtn">Download filled .xlsx</button>
         <span class="hint" id="exportMsg">Writes only the unit/weight/dimension cells — the rest of your template is left exactly as Amazon generated it.</span>
@@ -381,7 +385,8 @@ const colOfAddr=a=>{const m=a.match(/^([A-Z]+)\d+$/)[1];let n=0;for(const ch of 
 const rowOfAddr=a=>parseInt(a.match(/\d+$/)[0],10);
 const fmtNum=v=>String(Number(v));
 
-function editSheet(xml, writes){
+function editSheet(xml, writes, unlock){
+  if(unlock){ xml=xml.replace(/<sheetProtection\b[^>]*?\/>/,'').replace(/<sheetProtection\b[^>]*?>[\s\S]*?<\/sheetProtection>/,''); }
   const byRow={};
   for(const addr in writes){ const r=rowOfAddr(addr); (byRow[r]=byRow[r]||{})[colOfAddr(addr)]={addr,val:writes[addr]}; }
   for(const rowNum in byRow){
@@ -411,7 +416,7 @@ function editSheet(xml, writes){
   return xml;
 }
 
-async function buildFilled(bytes, sheetName, writes){
+async function buildFilled(bytes, sheetName, writes, unlock){
   const zip=await JSZip.loadAsync(bytes);
   const wbXml=await zip.file('xl/workbook.xml').async('string');
   const relsXml=await zip.file('xl/_rels/workbook.xml.rels').async('string');
@@ -426,7 +431,7 @@ async function buildFilled(bytes, sheetName, writes){
   let target=tm[1].replace(/^\//,''); const path=target.startsWith('xl/')?target:'xl/'+target;
   const sheetFile=zip.file(path); if(!sheetFile) throw new Error('Sheet part '+path+' not found in the workbook.');
   let xml=await sheetFile.async('string');
-  xml=editSheet(xml, writes);
+  xml=editSheet(xml, writes, unlock);
   zip.file(path, xml);
   return await zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -436,11 +441,12 @@ async function doExport(){
     if(!TPL||!TPL.bytes) throw new Error('Reload the template file first.');
     if(!BOXES.length) throw new Error('Parse a manifest first.');
     const writes=buildWrites();
-    const blob=await buildFilled(TPL.bytes, TPL.wsName, writes);
+    const unlock=$('unlockChk').checked;
+    const blob=await buildFilled(TPL.bytes, TPL.wsName, writes, unlock);
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=url; a.download='BURLEBO-box-content-filled.xlsx'; a.click();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
-    $('exportMsg').innerHTML='<span class="tag tag-ok">✓</span> Downloaded — units and dimensions written as-is, box weights padded +10% and capped at 49.5 lb; the rest of your file is byte-for-byte unchanged.';
+    $('exportMsg').innerHTML='<span class="tag tag-ok">✓</span> Downloaded — units/dimensions as-is, weights +10% capped at 49.5 lb'+(unlock?', sheet unlocked for editing':'')+'. Nothing else in the file changed.';
   }catch(err){ $('exportMsg').innerHTML='<span class="tag tag-err">Error</span> '+esc(err.message); }
 }
 
