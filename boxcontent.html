@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="/auth.js"></script>
 <style>
   :root{
@@ -138,7 +139,7 @@
       <div class="hint" style="margin-top:8px">First number → Length by default (your sample reads 22 × 16 × 16, so L=22). Flip if the pack screen lists width first.</div>
       <div class="row-inline">
         <button class="btn primary" id="exportBtn">Download filled .xlsx</button>
-        <span class="hint" id="exportMsg">Box-name &amp; boxed-quantity formulas are left intact.</span>
+        <span class="hint" id="exportMsg">Writes only the unit/weight/dimension cells — the rest of your template is left exactly as Amazon generated it.</span>
       </div>
     </div>
   </div>
@@ -221,7 +222,7 @@ function loadTemplate(bytes){
     else if(t.startsWith('box length'))labelRows.length=r;
     else if(t.startsWith('box height'))labelRows.height=r;
   }
-  TPL={wb,wsName,headerRow,firstBoxCol,boxedQtyCol,skuRows,skuRowByKey,totalBoxCount,labelRows,range};
+  TPL={wb,wsName,headerRow,firstBoxCol,boxedQtyCol,skuRows,skuRowByKey,totalBoxCount,labelRows,range,bytes};
   const pg=(ws[A1(1,0)]?.v)||'';
   $('tplInfo').innerHTML=`<span class="tag tag-ok">Loaded</span> ${esc(String(pg))} · <b>${skuRows.length}</b> SKUs · box columns start at <span class="mono">${colName(firstBoxCol)}</span> · total box count <b>${totalBoxCount??'?'}</b>`;
   $('parseBtn').disabled=false; $('parseHint').textContent='Paste your manifest, then parse.';
@@ -338,33 +339,93 @@ function buildBoxTable(){
   $('boxTable').innerHTML=html+'</tbody>';
 }
 
-function doExport(){
+/* Build the {A1addr: value} write set from the parsed boxes. */
+function buildWrites(){
+  const writes={};
+  BOXES.forEach(b=>{
+    const c=TPL.firstBoxCol+(b.boxNum-1);
+    b.lines.forEach(l=>{ const rec=TPL.skuRowByKey[stripFba(l.sku)]; if(!rec)return; const a=A1(rec.r,c); writes[a]=(writes[a]||0)+l.qty; });
+  });
+  const L=TPL.labelRows;
+  BOXES.forEach(b=>{
+    const c=TPL.firstBoxCol+(b.boxNum-1);
+    if(L.weight!=null && b.weight!=null) writes[A1(L.weight,c)]=b.weight;
+    if(b.dims.length>=3){
+      let len,wid,hei; if(DIMORDER==='LWH')[len,wid,hei]=b.dims; else [wid,len,hei]=b.dims;
+      if(L.length!=null) writes[A1(L.length,c)]=len;
+      if(L.width!=null)  writes[A1(L.width,c)]=wid;
+      if(L.height!=null) writes[A1(L.height,c)]=hei;
+    }
+  });
+  return writes;
+}
+
+/* ---------- surgical worksheet-XML editing (preserves every other byte) ---------- */
+const reEsc=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const colOfAddr=a=>{const m=a.match(/^([A-Z]+)\d+$/)[1];let n=0;for(const ch of m)n=n*26+(ch.charCodeAt(0)-64);return n;};
+const rowOfAddr=a=>parseInt(a.match(/\d+$/)[0],10);
+const fmtNum=v=>String(Number(v));
+
+function editSheet(xml, writes){
+  const byRow={};
+  for(const addr in writes){ const r=rowOfAddr(addr); (byRow[r]=byRow[r]||{})[colOfAddr(addr)]={addr,val:writes[addr]}; }
+  for(const rowNum in byRow){
+    const cells=byRow[rowNum];
+    let openTag,inner,close,start,end;
+    const full=new RegExp('(<row r="'+rowNum+'"[^>]*?>)([\\s\\S]*?)(</row>)').exec(xml);
+    if(full){ openTag=full[1]; inner=full[2]; close=full[3]; start=full.index; end=full.index+full[0].length; }
+    else{
+      const sc=new RegExp('<row r="'+rowNum+'"[^>]*?/>').exec(xml);
+      if(!sc) throw new Error('Row '+rowNum+' not found in the box-packing sheet.');
+      openTag=sc[0].replace(/\/>$/,'>'); inner=''; close='</row>'; start=sc.index; end=sc.index+sc[0].length;
+    }
+    const existing={};
+    const re=/<c r="([A-Z]+\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g; let cm;
+    while((cm=re.exec(inner))){ existing[colOfAddr(cm[1])]=cm[0]; }
+    for(const cn in cells){
+      const {addr,val}=cells[cn]; let s='';
+      if(existing[cn]){ const sm=/\bs="(\d+)"/.exec(existing[cn]); if(sm)s=' s="'+sm[1]+'"'; }
+      existing[cn]='<c r="'+addr+'"'+s+'><v>'+fmtNum(val)+'</v></c>';
+    }
+    const cols=Object.keys(existing).map(Number).sort((a,b)=>a-b);
+    const newInner=cols.map(c=>existing[c]).join('');
+    const sm=/spans="1:(\d+)"/.exec(openTag);
+    if(sm){ const cur=+sm[1],mx=cols[cols.length-1]; if(mx>cur) openTag=openTag.replace('spans="1:'+cur+'"','spans="1:'+mx+'"'); }
+    xml=xml.slice(0,start)+openTag+newInner+close+xml.slice(end);
+  }
+  return xml;
+}
+
+async function buildFilled(bytes, sheetName, writes){
+  const zip=await JSZip.loadAsync(bytes);
+  const wbXml=await zip.file('xl/workbook.xml').async('string');
+  const relsXml=await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const n=reEsc(sheetName);
+  const sm=new RegExp('<sheet[^>]*name="'+n+'"[^>]*r:id="([^"]+)"').exec(wbXml)
+        || new RegExp('<sheet[^>]*r:id="([^"]+)"[^>]*name="'+n+'"').exec(wbXml);
+  if(!sm) throw new Error('Could not locate the box-packing sheet in workbook.xml.');
+  const rid=sm[1];
+  const tm=new RegExp('<Relationship[^>]*Id="'+rid+'"[^>]*Target="([^"]+)"').exec(relsXml)
+        || new RegExp('<Relationship[^>]*Target="([^"]+)"[^>]*Id="'+rid+'"').exec(relsXml);
+  if(!tm) throw new Error('Could not resolve the sheet file path from rels.');
+  let target=tm[1].replace(/^\//,''); const path=target.startsWith('xl/')?target:'xl/'+target;
+  const sheetFile=zip.file(path); if(!sheetFile) throw new Error('Sheet part '+path+' not found in the workbook.');
+  let xml=await sheetFile.async('string');
+  xml=editSheet(xml, writes);
+  zip.file(path, xml);
+  return await zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+async function doExport(){
   try{
-    const ws=TPL.wb.Sheets[TPL.wsName];
-    const acc={}; // "r:c" -> summed qty (handles a SKU appearing twice in one box)
-    BOXES.forEach(b=>{
-      const col=TPL.firstBoxCol+(b.boxNum-1);
-      b.lines.forEach(l=>{ const rec=TPL.skuRowByKey[stripFba(l.sku)]; if(!rec)return; const k=rec.r+':'+col; acc[k]=(acc[k]||0)+l.qty; });
-    });
-    for(const k in acc){ const [r,c]=k.split(':').map(Number); ws[A1(r,c)]={t:'n',v:acc[k]}; }
-    const L=TPL.labelRows;
-    BOXES.forEach(b=>{
-      const col=TPL.firstBoxCol+(b.boxNum-1);
-      if(L.weight!=null && b.weight!=null) ws[A1(L.weight,col)]={t:'n',v:b.weight};
-      if(b.dims.length>=3){
-        let len,wid,hei;
-        if(DIMORDER==='LWH')[len,wid,hei]=b.dims; else [wid,len,hei]=b.dims;
-        if(L.length!=null) ws[A1(L.length,col)]={t:'n',v:len};
-        if(L.width!=null)  ws[A1(L.width,col)] ={t:'n',v:wid};
-        if(L.height!=null) ws[A1(L.height,col)]={t:'n',v:hei};
-      }
-    });
-    const out=XLSX.write(TPL.wb,{bookType:'xlsx',type:'array',cellStyles:true});
-    const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    if(!TPL||!TPL.bytes) throw new Error('Reload the template file first.');
+    if(!BOXES.length) throw new Error('Parse a manifest first.');
+    const writes=buildWrites();
+    const blob=await buildFilled(TPL.bytes, TPL.wsName, writes);
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=url; a.download='BURLEBO-box-content-filled.xlsx'; a.click();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
-    $('exportMsg').innerHTML='<span class="tag tag-ok">✓</span> Downloaded — review in Amazon\'s preview before submitting.';
+    $('exportMsg').innerHTML='<span class="tag tag-ok">✓</span> Downloaded — only the unit, weight and dimension cells were written; the rest of your file is byte-for-byte unchanged.';
   }catch(err){ $('exportMsg').innerHTML='<span class="tag tag-err">Error</span> '+esc(err.message); }
 }
 
