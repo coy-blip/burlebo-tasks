@@ -159,6 +159,8 @@ async function loadSharedNav(){
 
 const $ = id => document.getElementById(id);
 let TPL=null, BOXES=[], DIMORDER='LWH';
+const MAX_BOX_WEIGHT=49.5;                 // never write a box weight above this
+const capW = w => (w==null?null:Math.min(w,MAX_BOX_WEIGHT));
 
 const stripFba = s => String(s||'').replace(/^FBA2?-/i,'').toUpperCase().trim();
 const colName = c => XLSX.utils.encode_col(c);
@@ -249,14 +251,19 @@ function parseManifest(txt){
     const boxNum=parseInt(b[0].match(/Box\s+(\d+)/i)[1],10);
     const lpn=(b.find(x=>x.trim().startsWith('LPN-'))||'').trim()||null;
     const skuIdxs=[]; b.forEach((x,i)=>{ if(/^SKU\s+\S+/i.test(x.trim())) skuIdxs.push(i); });
-    const firstSku = skuIdxs.length ? skuIdxs[0] : b.length;
-    const header = b.slice(0,firstSku);
-    // total eaches
-    let total=null; for(const x of header){ const m=x.trim().match(/^(\d+)\s+Eaches$/i); if(m)total=parseInt(m[1],10); }
-    // dims + weight from header, after the box-type line
-    const btIdx=header.findIndex(x=>/box/i.test(x)&&/-/.test(x)&&!/^box\s+\d+/i.test(x.trim())&&!x.startsWith('LPN'));
+    // total eaches (anywhere in the box block)
+    let total=null; for(const x of b){ const m=x.trim().match(/^(\d+)\s+Eaches$/i); if(m)total=parseInt(m[1],10); }
+    // dims + weight: the header carries "<w> x <l> x <h>" then the weight, marked by the two 'x' lines.
+    // Detecting via the 'x' separators works whether the SKU rows come before (single-SKU) or after (mixed).
     let dims=[],weight=null;
-    if(btIdx>=0){ const nums=header.slice(btIdx+1).filter(isNum).map(parseFloat); dims=nums.slice(0,3); if(nums.length>3)weight=nums[3]; }
+    const xIdx=b.findIndex(x=>x.trim()==='x');
+    if(xIdx>0){
+      const d1=b[xIdx-1],d2=b[xIdx+1],d3=b[xIdx+3]; // b[xIdx+2] is the second 'x'
+      if([d1,d2,d3].every(v=>v!==undefined&&isNum(v))){
+        dims=[parseFloat(d1),parseFloat(d2),parseFloat(d3)];
+        const w=b[xIdx+4]; if(w!==undefined&&isNum(w)) weight=parseFloat(w);
+      }
+    }
     // per-SKU pairs: qty = first integer line after the SKU line
     const linesOut=[];
     for(const i of skuIdxs){
@@ -310,6 +317,9 @@ function render(){
     probs.push(`<span class="tag tag-err">!</span> SKU lines with no matching template row (skipped on export): `+unmatched.map(u=>`<span class="mono">Box ${u.box}: ${esc(u.sku)} (${u.qty})</span>`).join(', '));
   if(boxMis.length)
     probs.push(`<span class="tag tag-warn">!</span> Boxes where parsed SKUs don't sum to the stated total: `+boxMis.map(b=>`<span class="mono">Box ${b.boxNum}: ${b.parsedSum}/${b.total}</span>`).join(', '));
+  const capped=BOXES.filter(b=>b.weight!=null && b.weight>MAX_BOX_WEIGHT);
+  if(capped.length)
+    probs.push(`<span class="tag tag-warn">!</span> Box weight capped to ${MAX_BOX_WEIGHT} lb (was over limit): `+capped.map(b=>`<span class="mono">Box ${b.boxNum}: ${b.weight}→${MAX_BOX_WEIGHT}</span>`).join(', '));
   $('problems').innerHTML=probs.length?probs.join('<br><br>'):'<span class="tag tag-ok">✓</span> Everything reconciles — all SKUs matched and every box sums to its total.';
 
   buildSkuTable(); buildBoxTable();
@@ -334,7 +344,8 @@ function buildBoxTable(){
     if(b.total==null){cls='tag-dim';lab='no total';}
     else if(b.parsedSum!==b.total){cls='tag-warn';lab=(b.parsedSum>b.total?'over':'short');}
     const d=b.dims.length>=3?b.dims.join(' × '):'—';
-    html+=`<tr><td>Box ${b.boxNum}</td><td class="mono">${col}</td><td class="r">${b.lines.length}</td><td class="r">${b.parsedSum}</td><td class="r">${b.total??''}</td><td class="r">${b.weight??''}</td><td class="mono">${d}</td><td><span class="tag ${cls}">${lab}</span></td></tr>`;
+    const wDisp = b.weight==null ? '' : (b.weight>MAX_BOX_WEIGHT ? `${b.weight} <span class="tag tag-warn">→${MAX_BOX_WEIGHT}</span>` : b.weight);
+    html+=`<tr><td>Box ${b.boxNum}</td><td class="mono">${col}</td><td class="r">${b.lines.length}</td><td class="r">${b.parsedSum}</td><td class="r">${b.total??''}</td><td class="r">${wDisp}</td><td class="mono">${d}</td><td><span class="tag ${cls}">${lab}</span></td></tr>`;
   });
   $('boxTable').innerHTML=html+'</tbody>';
 }
@@ -349,7 +360,7 @@ function buildWrites(){
   const L=TPL.labelRows;
   BOXES.forEach(b=>{
     const c=TPL.firstBoxCol+(b.boxNum-1);
-    if(L.weight!=null && b.weight!=null) writes[A1(L.weight,c)]=b.weight;
+    if(L.weight!=null && b.weight!=null) writes[A1(L.weight,c)]=capW(b.weight);
     if(b.dims.length>=3){
       let len,wid,hei; if(DIMORDER==='LWH')[len,wid,hei]=b.dims; else [wid,len,hei]=b.dims;
       if(L.length!=null) writes[A1(L.length,c)]=len;
