@@ -160,7 +160,9 @@ async function loadSharedNav(){
 const $ = id => document.getElementById(id);
 let TPL=null, BOXES=[], DIMORDER='LWH';
 const MAX_BOX_WEIGHT=49.5;                 // never write a box weight above this
-const capW = w => (w==null?null:Math.min(w,MAX_BOX_WEIGHT));
+const WEIGHT_BUMP=1.10;                     // pad every box weight by 10% on the sheet
+// Final weight written to the sheet: parsed × 1.10, then capped at 49.5, rounded to 2dp.
+const outW = w => (w==null ? null : Math.round(Math.min(w*WEIGHT_BUMP, MAX_BOX_WEIGHT)*100)/100);
 
 const stripFba = s => String(s||'').replace(/^FBA2?-/i,'').toUpperCase().trim();
 const colName = c => XLSX.utils.encode_col(c);
@@ -317,9 +319,9 @@ function render(){
     probs.push(`<span class="tag tag-err">!</span> SKU lines with no matching template row (skipped on export): `+unmatched.map(u=>`<span class="mono">Box ${u.box}: ${esc(u.sku)} (${u.qty})</span>`).join(', '));
   if(boxMis.length)
     probs.push(`<span class="tag tag-warn">!</span> Boxes where parsed SKUs don't sum to the stated total: `+boxMis.map(b=>`<span class="mono">Box ${b.boxNum}: ${b.parsedSum}/${b.total}</span>`).join(', '));
-  const capped=BOXES.filter(b=>b.weight!=null && b.weight>MAX_BOX_WEIGHT);
+  const capped=BOXES.filter(b=>b.weight!=null && b.weight*WEIGHT_BUMP>MAX_BOX_WEIGHT);
   if(capped.length)
-    probs.push(`<span class="tag tag-warn">!</span> Box weight capped to ${MAX_BOX_WEIGHT} lb (was over limit): `+capped.map(b=>`<span class="mono">Box ${b.boxNum}: ${b.weight}→${MAX_BOX_WEIGHT}</span>`).join(', '));
+    probs.push(`<span class="tag tag-warn">!</span> Box weight hit the ${MAX_BOX_WEIGHT} lb cap after the +10% bump: `+capped.map(b=>`<span class="mono">Box ${b.boxNum}: ${b.weight}→${MAX_BOX_WEIGHT}</span>`).join(', '));
   $('problems').innerHTML=probs.length?probs.join('<br><br>'):'<span class="tag tag-ok">✓</span> Everything reconciles — all SKUs matched and every box sums to its total.';
 
   buildSkuTable(); buildBoxTable();
@@ -337,14 +339,16 @@ function buildSkuTable(){
   $('skuTable').innerHTML=html+'</tbody>';
 }
 function buildBoxTable(){
-  let html='<thead><tr><th>Box</th><th>Col</th><th class="r">SKUs</th><th class="r">Parsed sum</th><th class="r">Stated total</th><th class="r">Weight</th><th>L×W×H</th><th>Status</th></tr></thead><tbody>';
+  let html='<thead><tr><th>Box</th><th>Col</th><th class="r">SKUs</th><th class="r">Parsed sum</th><th class="r">Stated total</th><th class="r">Weight →sheet (orig)</th><th>L×W×H</th><th>Status</th></tr></thead><tbody>';
   BOXES.forEach(b=>{
     const col=colName(TPL.firstBoxCol+(b.boxNum-1));
     let cls='tag-ok',lab='✓';
     if(b.total==null){cls='tag-dim';lab='no total';}
     else if(b.parsedSum!==b.total){cls='tag-warn';lab=(b.parsedSum>b.total?'over':'short');}
     const d=b.dims.length>=3?b.dims.join(' × '):'—';
-    const wDisp = b.weight==null ? '' : (b.weight>MAX_BOX_WEIGHT ? `${b.weight} <span class="tag tag-warn">→${MAX_BOX_WEIGHT}</span>` : b.weight);
+    const ow=outW(b.weight);
+    const capped=b.weight!=null && b.weight*WEIGHT_BUMP>MAX_BOX_WEIGHT;
+    const wDisp = b.weight==null ? '' : (capped ? `${ow} <span class="tag tag-warn">cap</span> <span class="hint">(${b.weight})</span>` : `${ow} <span class="hint">(${b.weight})</span>`);
     html+=`<tr><td>Box ${b.boxNum}</td><td class="mono">${col}</td><td class="r">${b.lines.length}</td><td class="r">${b.parsedSum}</td><td class="r">${b.total??''}</td><td class="r">${wDisp}</td><td class="mono">${d}</td><td><span class="tag ${cls}">${lab}</span></td></tr>`;
   });
   $('boxTable').innerHTML=html+'</tbody>';
@@ -360,7 +364,7 @@ function buildWrites(){
   const L=TPL.labelRows;
   BOXES.forEach(b=>{
     const c=TPL.firstBoxCol+(b.boxNum-1);
-    if(L.weight!=null && b.weight!=null) writes[A1(L.weight,c)]=capW(b.weight);
+    if(L.weight!=null && b.weight!=null) writes[A1(L.weight,c)]=outW(b.weight);
     if(b.dims.length>=3){
       let len,wid,hei; if(DIMORDER==='LWH')[len,wid,hei]=b.dims; else [wid,len,hei]=b.dims;
       if(L.length!=null) writes[A1(L.length,c)]=len;
@@ -436,7 +440,7 @@ async function doExport(){
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=url; a.download='BURLEBO-box-content-filled.xlsx'; a.click();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
-    $('exportMsg').innerHTML='<span class="tag tag-ok">✓</span> Downloaded — only the unit, weight and dimension cells were written; the rest of your file is byte-for-byte unchanged.';
+    $('exportMsg').innerHTML='<span class="tag tag-ok">✓</span> Downloaded — units and dimensions written as-is, box weights padded +10% and capped at 49.5 lb; the rest of your file is byte-for-byte unchanged.';
   }catch(err){ $('exportMsg').innerHTML='<span class="tag tag-err">Error</span> '+esc(err.message); }
 }
 
