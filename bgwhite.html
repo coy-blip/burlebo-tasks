@@ -132,6 +132,14 @@
           <option value="png">Transparent · PNG (cutout only)</option>
         </select>
       </div>
+      <div class="opt">
+        <label for="quality">AI quality</label>
+        <select id="quality">
+          <option value="isnet" selected>Best — most accurate (largest)</option>
+          <option value="isnet_fp16">Balanced</option>
+          <option value="isnet_quint8">Fast — smallest</option>
+        </select>
+      </div>
       <div class="row-inline">
         <button class="btn" id="reprocess" disabled>Reprocess with current settings</button>
         <button class="btn primary" id="dl-all" style="display:none">Download all (.zip)</button>
@@ -143,8 +151,9 @@
 
     <div class="rules">
       <b>Keep original</b> swaps only the background to pure white at your exact source size and crop. <b>Square / Original</b>
-      reframe for Amazon (product ≥85% of frame, long side scaled to 1600px). First image is slower — the AI model (~40&nbsp;MB)
-      downloads once, then it's cached for the session.
+      reframe for Amazon (product ≥85% of frame, long side scaled to 1600px). <b>AI quality</b> — <b>Best</b> uses the
+      full-precision model (largest one-time download, most accurate, least likely to drop a limb or edge); Balanced and Fast
+      are smaller and quicker. The model downloads once, then it's cached for the session.
     </div>
   </div>
 
@@ -295,6 +304,7 @@
     setStatus('Removing background — '+item.name+'…','work');
 
     const cutoutBlob=await remove(item.file,{
+      model: $('quality').value,
       progress:(key,cur,tot)=>{ if(tot && /fetch|download/i.test(key)) setStatus('Loading AI model (one-time)… '+Math.round((cur/tot)*100)+'%','work'); }
     });
 
@@ -493,6 +503,9 @@
     });
     $('pad').addEventListener('change',rebuildAll);
     $('fmt').addEventListener('change',()=>{ rebuildAll(); });
+    $('quality').addEventListener('change',()=>{
+      if(items.some(i=>i.status==='done'||i.status==='error')){ items.forEach(i=>i.status='queued'); render(); runQueue(); }
+    });
     $('reprocess').addEventListener('click',()=>{ items.forEach(i=>i.status='queued'); render(); runQueue(); });
     $('dl-all').addEventListener('click',downloadZip);
     $('clear').addEventListener('click',clearAll);
