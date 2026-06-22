@@ -71,6 +71,7 @@
     '/planner.html':        { coy: 'edit',                   admin: 'edit'                   },
     '/audit.html':          { coy: 'edit',                   admin: 'edit', brooks: 'edit' },
     '/boxcontent.html':     { coy: 'edit',                   admin: 'edit', employee: 'edit', brooks: 'edit' },
+    '/bgwhite.html':        { coy: 'edit',                   admin: 'edit', employee: 'edit', brooks: 'edit' },
     '/tools.html':          { coy: 'edit',                   admin: 'edit', employee: 'edit', brooks: 'edit' },
   };
 
@@ -90,6 +91,7 @@
     '/planner.html':        'Demand Planner',
     '/audit.html':          'Amazon Inventory Audit',
     '/boxcontent.html':     'FBA Box Content Filler',
+    '/bgwhite.html':        'White Background Maker',
     '/tools.html':          'Tools',
     '/sku.html':            'SKU Lookup',
     '/report.html':         'Big Picture',
@@ -105,7 +107,7 @@
     '/index.html', '/dashboard.html', '/snapshot.html', '/upload.html',
     '/analytics.html', '/ads.html', '/profit.html', '/inventory.html',
     '/shipment.html', '/lookout.html', '/planner.html', '/sku.html', '/report.html',
-    '/tools.html', '/audit.html', '/boxcontent.html', '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
+    '/tools.html', '/audit.html', '/boxcontent.html', '/bgwhite.html', '/cannibalization.html', '/todo.html', '/goal.html', '/settings.html',
   ];
   function pagesForRole(role) {
     const out = [];
