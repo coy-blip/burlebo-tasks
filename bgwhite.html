@@ -39,11 +39,13 @@
   .opts{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;margin-top:18px}
   .opt{display:flex;flex-direction:column;gap:6px}
   .opt label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
-  .opt select{padding:9px 11px;font-family:inherit;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;min-width:170px}
+  .opt select{padding:9px 11px;font-family:inherit;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;min-width:200px}
   .opt select:focus{border-color:var(--accent)}
+  .opt.hide{display:none}
   .btn{padding:10px 20px;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel-2);color:var(--text)}
   .btn:hover{background:#1f242c} .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   .btn.primary:disabled{opacity:.4;cursor:not-allowed} .btn.ghost{background:transparent;color:var(--text-dim)}
+  .btn.sm{padding:7px 12px;font-size:12px}
   .row-inline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px}
   .rules{font-size:12px;color:var(--text-dim);line-height:1.7;margin-top:10px}
   .rules b{color:var(--text)}
@@ -62,6 +64,25 @@
   .rcard .spin{font-size:12px;color:var(--yellow);padding:30px 0;text-align:center}
   .rcard .rerr{font-size:12px;color:var(--red);padding:20px 0;text-align:center}
   .pillnote{display:inline-block;font-size:10px;font-weight:600;color:var(--green);background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);border-radius:999px;padding:2px 8px;margin-top:2px}
+  .rbtns{display:flex;gap:8px}.rbtns .btn{flex:1}
+  /* ---- touch-up editor ---- */
+  .ed-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:1100;padding:20px}
+  .ed-overlay.show{display:flex}
+  .ed-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;width:760px;max-width:100%;max-height:calc(100vh - 40px);overflow:auto}
+  .ed-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .ed-head .et{font-size:16px;font-weight:700} .ed-head .es{font-size:12px;color:var(--text-dim);margin-top:2px}
+  .ed-stage{display:flex;justify-content:center;background:
+    conic-gradient(#2a2f38 25%,#1d2128 0 50%,#2a2f38 0 75%,#1d2128 0) 0 0/18px 18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:14px}
+  .ed-stage.white{background:#fff}
+  #ed-canvas{max-width:100%;max-height:56vh;touch-action:none;cursor:crosshair;display:block}
+  .ed-controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+  .seg button{padding:8px 14px;font-family:inherit;font-size:13px;font-weight:600;background:var(--panel-2);color:var(--text-dim);border:none;cursor:pointer}
+  .seg button.on{background:var(--accent);color:#fff}
+  .ed-controls .lab{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  input[type=range]{accent-color:var(--accent)}
+  .ed-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+  .ed-hint{font-size:11px;color:var(--text-dim);line-height:1.6;margin-top:10px}
 </style>
 </head>
 <body>
@@ -74,8 +95,9 @@
 <main id="app-main" class="hidden">
   <div class="page-title">White Background Maker</div>
   <div class="page-sub">
-    Drop one or more product photos. The AI removes the background in your browser and drops the product onto a pure-white
-    canvas, framed and sized to Amazon main-image specs. Nothing leaves your device — all processing is local.
+    Drop one or more product photos. The AI removes the background in your browser and puts the product on a pure-white
+    background. By default it keeps your original framing untouched — no crop, no resize. If the AI ever drops part of the
+    subject, open the result and brush it back. Nothing leaves your device.
   </div>
 
   <div class="panel">
@@ -88,24 +110,25 @@
 
     <div class="opts">
       <div class="opt">
-        <label for="shape">Output shape</label>
-        <select id="shape">
-          <option value="square" selected>Square (recommended)</option>
-          <option value="original">Keep original proportions</option>
+        <label for="framing">Framing</label>
+        <select id="framing">
+          <option value="keep" selected>Keep original — no crop or resize</option>
+          <option value="square">Square, centered (Amazon)</option>
+          <option value="original">Original proportions, padded</option>
         </select>
       </div>
-      <div class="opt">
-        <label for="pad">Product framing</label>
+      <div class="opt hide" id="pad-opt">
+        <label for="pad">Product fills</label>
         <select id="pad">
-          <option value="0.92">Tight (fills ~92%)</option>
-          <option value="0.85" selected>Standard — Amazon min (~85%)</option>
-          <option value="0.78">Roomy (fills ~78%)</option>
+          <option value="0.92">~92% (tight)</option>
+          <option value="0.85" selected>~85% (Amazon min)</option>
+          <option value="0.78">~78% (roomy)</option>
         </select>
       </div>
       <div class="opt">
         <label for="fmt">Background / format</label>
         <select id="fmt">
-          <option value="jpg" selected>Pure white · JPEG (Amazon main image)</option>
+          <option value="jpg" selected>Pure white · JPEG</option>
           <option value="png">Transparent · PNG (cutout only)</option>
         </select>
       </div>
@@ -119,9 +142,9 @@
     <div class="status" id="status"></div>
 
     <div class="rules">
-      <b>Amazon main-image specs this matches:</b> pure white background (RGB 255,255,255) · product fills ≥85% of the frame ·
-      sRGB JPEG · longest side scaled to 1600px so listing zoom works. First image takes longer — the AI model (~40&nbsp;MB)
-      downloads once and is then cached for the rest of the session.
+      <b>Keep original</b> swaps only the background to pure white at your exact source size and crop. <b>Square / Original</b>
+      reframe for Amazon (product ≥85% of frame, long side scaled to 1600px). First image is slower — the AI model (~40&nbsp;MB)
+      downloads once, then it's cached for the session.
     </div>
   </div>
 
@@ -131,9 +154,43 @@
   </div>
 </main>
 
+<!-- Touch-up editor -->
+<div class="ed-overlay" id="ed-overlay">
+  <div class="ed-card">
+    <div class="ed-head">
+      <div>
+        <div class="et">Touch up</div>
+        <div class="es" id="ed-name"></div>
+      </div>
+      <button class="btn ghost sm" id="ed-x">Close</button>
+    </div>
+    <div class="ed-stage" id="ed-stage"><canvas id="ed-canvas"></canvas></div>
+    <div class="ed-controls">
+      <div class="seg" id="ed-mode">
+        <button data-mode="restore" class="on">Restore</button>
+        <button data-mode="erase">Erase</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="lab">Brush</span>
+        <input type="range" id="ed-size" min="6" max="160" value="44" style="width:140px">
+      </div>
+      <button class="btn sm" id="ed-undo">Undo</button>
+      <button class="btn sm ghost" id="ed-reset">Reset</button>
+    </div>
+    <div class="ed-hint">
+      <b>Restore</b> paints the original photo back (use this to bring back a dropped arm/edge). <b>Erase</b> wipes leftover
+      background to white. Click-drag to brush.
+    </div>
+    <div class="ed-actions">
+      <button class="btn ghost" id="ed-cancel">Cancel</button>
+      <button class="btn primary" id="ed-apply">Apply changes</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // --------------------------------------------------------------------------
-  // Shared nav (same pattern as the other tool pages)
+  // Shared nav
   // --------------------------------------------------------------------------
   async function loadSharedNav(){
     try{
@@ -147,8 +204,7 @@
   }
 
   // --------------------------------------------------------------------------
-  // Background-removal library — loaded lazily on first use (dynamic import so
-  // the page + auth stay instant and the heavy JS only loads when needed).
+  // Background-removal library — lazy dynamic import on first use
   // --------------------------------------------------------------------------
   const BG_LIB = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
   let _removeBg = null;
@@ -162,106 +218,102 @@
   }
 
   // --------------------------------------------------------------------------
-  // State
+  // State / constants
   // --------------------------------------------------------------------------
-  const TARGET_MIN_LONG = 1600;   // upscale so the long side is at least this
-  const MAX_LONG        = 3000;   // never exceed this (keeps files reasonable)
-  const ALPHA_THRESH    = 12;     // pixel counts as "product" above this alpha
-  const items = [];               // {id, file, name, origURL, status, blob, url, w, h, err}
-  let processing = false;
-  let nextId = 1;
+  const TARGET_MIN_LONG = 1600, MAX_LONG = 3000, ALPHA_THRESH = 12;
+  const items = [];   // {id,file,name,origURL,status,err, origImg,cutImg,work, blob,url,w,h,outName}
+  let processing=false, nextId=1;
 
   const $ = id => document.getElementById(id);
   function setStatus(msg, cls){ const s=$('status'); s.textContent=msg||''; s.className='status'+(cls?' '+cls:''); }
 
   // --------------------------------------------------------------------------
-  // Core: bg removal -> bounding box -> white/transparent canvas at Amazon spec
+  // Helpers
   // --------------------------------------------------------------------------
-  function loadBitmap(blobOrFile){
+  function loadBitmap(src){
     return new Promise((res,rej)=>{
       const img=new Image();
       img.onload=()=>res(img);
       img.onerror=()=>rej(new Error('Could not decode image.'));
-      img.src=URL.createObjectURL(blobOrFile);
+      img.src=(typeof src==='string')?src:URL.createObjectURL(src);
     });
   }
-
-  function findBBox(data, w, h){
-    let minX=w, minY=h, maxX=-1, maxY=-1;
-    for(let y=0; y<h; y++){
-      for(let x=0; x<w; x++){
-        if(data[(y*w+x)*4+3] > ALPHA_THRESH){
-          if(x<minX)minX=x; if(x>maxX)maxX=x;
-          if(y<minY)minY=y; if(y>maxY)maxY=y;
-        }
-      }
+  function findBBox(data,w,h){
+    let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      if(data[(y*w+x)*4+3]>ALPHA_THRESH){ if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
     }
-    if(maxX<0) return null; // fully transparent (no subject found)
+    if(maxX<0) return null;
     return {minX,minY,maxX,maxY};
   }
 
+  // Build the export blob from item.work (which reflects any touch-up edits)
+  async function buildOutput(item){
+    const work=item.work, ww=work.width, wh=work.height;
+    const isJpg=$('fmt').value==='jpg';
+    const framing=$('framing').value;
+
+    let out=document.createElement('canvas'), octx;
+    if(framing==='keep'){
+      out.width=ww; out.height=wh; octx=out.getContext('2d');
+      if(isJpg){ octx.fillStyle='#ffffff'; octx.fillRect(0,0,ww,wh); }
+      octx.drawImage(work,0,0);
+    } else {
+      // reframe to product bounds
+      const wctx=work.getContext('2d',{willReadFrequently:true});
+      const bbox=findBBox(wctx.getImageData(0,0,ww,wh).data,ww,wh);
+      if(!bbox) throw new Error('No subject detected.');
+      const pw=bbox.maxX-bbox.minX+1, ph=bbox.maxY-bbox.minY+1;
+      const ratio=parseFloat($('pad').value);
+      let cw,ch;
+      if(framing==='square'){ const side=Math.max(pw,ph)/ratio; cw=side; ch=side; }
+      else { cw=pw/ratio; ch=ph/ratio; }
+      let scale=1; const longest=Math.max(cw,ch);
+      if(longest<TARGET_MIN_LONG) scale=TARGET_MIN_LONG/longest;
+      else if(longest>MAX_LONG) scale=MAX_LONG/longest;
+      const W=Math.round(cw*scale), H=Math.round(ch*scale);
+      out.width=W; out.height=H; octx=out.getContext('2d');
+      octx.imageSmoothingEnabled=true; octx.imageSmoothingQuality='high';
+      if(isJpg){ octx.fillStyle='#ffffff'; octx.fillRect(0,0,W,H); }
+      const drawX=(W-pw*scale)/2 - bbox.minX*scale;
+      const drawY=(H-ph*scale)/2 - bbox.minY*scale;
+      octx.drawImage(work, drawX, drawY, ww*scale, wh*scale);
+    }
+
+    const type=isJpg?'image/jpeg':'image/png', q=isJpg?0.92:undefined;
+    const blob=await new Promise(r=>out.toBlob(r,type,q));
+    if(item.url) URL.revokeObjectURL(item.url);
+    item.blob=blob; item.url=URL.createObjectURL(blob); item.w=out.width; item.h=out.height;
+    item.outName=item.name.replace(/\.[^.]+$/,'')+(isJpg?'_white.jpg':'_cutout.png');
+  }
+
+  // --------------------------------------------------------------------------
+  // Core processing for one item
+  // --------------------------------------------------------------------------
   async function processOne(item){
-    const remove = await getRemover();
+    const remove=await getRemover();
     setStatus('Removing background — '+item.name+'…','work');
 
-    // 1) AI background removal -> PNG blob with transparency
-    const cutoutBlob = await remove(item.file, {
-      progress:(key,cur,tot)=>{
-        if(tot && /fetch|download/i.test(key)){
-          setStatus('Loading AI model (one-time)… '+Math.round((cur/tot)*100)+'%','work');
-        }
-      }
+    const cutoutBlob=await remove(item.file,{
+      progress:(key,cur,tot)=>{ if(tot && /fetch|download/i.test(key)) setStatus('Loading AI model (one-time)… '+Math.round((cur/tot)*100)+'%','work'); }
     });
 
-    // 2) Draw cutout, read alpha, find product bounds
-    const cut = await loadBitmap(cutoutBlob);
-    const scan = document.createElement('canvas');
-    scan.width=cut.width; scan.height=cut.height;
-    const sctx=scan.getContext('2d',{willReadFrequently:true});
-    sctx.drawImage(cut,0,0);
-    const bbox = findBBox(sctx.getImageData(0,0,cut.width,cut.height).data, cut.width, cut.height);
-    if(!bbox) throw new Error('No subject detected in this image.');
+    // Keep the original AND the cutout, sized to the original's native pixels,
+    // so the touch-up brush lines up exactly.
+    const origImg=await loadBitmap(item.origURL);
+    const cutImg =await loadBitmap(cutoutBlob);
+    const ow=origImg.naturalWidth, oh=origImg.naturalHeight;
 
-    const pw=bbox.maxX-bbox.minX+1, ph=bbox.maxY-bbox.minY+1;
+    const work=document.createElement('canvas'); work.width=ow; work.height=oh;
+    work.getContext('2d').drawImage(cutImg,0,0,ow,oh);
 
-    // 3) Decide output frame from product framing + shape settings
-    const ratio = parseFloat($('pad').value);   // product fills this fraction of the frame's limiting side
-    const square = $('shape').value === 'square';
-    let cw, ch;
-    if(square){ const side=Math.max(pw,ph)/ratio; cw=side; ch=side; }
-    else { cw=pw/ratio; ch=ph/ratio; }
-
-    // 4) Scale so the long side lands in [TARGET_MIN_LONG, MAX_LONG]
-    let scale=1; const longest=Math.max(cw,ch);
-    if(longest<TARGET_MIN_LONG) scale=TARGET_MIN_LONG/longest;
-    else if(longest>MAX_LONG)   scale=MAX_LONG/longest;
-    const W=Math.round(cw*scale), H=Math.round(ch*scale);
-
-    // 5) Composite: fill (white for jpg), draw scaled cutout centered on bbox
-    const out=document.createElement('canvas');
-    out.width=W; out.height=H;
-    const octx=out.getContext('2d');
-    octx.imageSmoothingEnabled=true; octx.imageSmoothingQuality='high';
-    const isJpg = $('fmt').value === 'jpg';
-    if(isJpg){ octx.fillStyle='#ffffff'; octx.fillRect(0,0,W,H); }
-
-    const drawX = (W - pw*scale)/2 - bbox.minX*scale;
-    const drawY = (H - ph*scale)/2 - bbox.minY*scale;
-    octx.drawImage(cut, drawX, drawY, cut.width*scale, cut.height*scale);
-
-    // 6) Export
-    const type = isJpg ? 'image/jpeg' : 'image/png';
-    const q    = isJpg ? 0.92 : undefined;
-    const blob = await new Promise(r=> out.toBlob(r, type, q));
-    if(item.url) URL.revokeObjectURL(item.url);
-    item.blob=blob; item.url=URL.createObjectURL(blob); item.w=W; item.h=H;
-    item.outName = item.name.replace(/\.[^.]+$/,'') + (isJpg ? '_white.jpg' : '_cutout.png');
+    item.origImg=origImg; item.cutImg=cutImg; item.work=work;
+    await buildOutput(item);
   }
 
   async function runQueue(){
     if(processing) return;
-    processing=true;
-    $('reprocess').disabled=true;
+    processing=true; $('reprocess').disabled=true;
     let done=0, failed=0;
     for(const item of items){
       item.status='working'; item.err=null; render();
@@ -269,73 +321,70 @@
       catch(e){ console.error(e); item.status='error'; item.err=(e&&e.message)||'Failed.'; failed++; }
       render();
     }
-    processing=false;
-    $('reprocess').disabled=false;
+    processing=false; $('reprocess').disabled=false;
     const ready=items.filter(i=>i.status==='done').length;
     $('dl-all').style.display = ready>1 ? '' : 'none';
-    if(failed) setStatus(done+' done, '+failed+' failed.','err');
-    else setStatus(done+' image'+(done===1?'':'s')+' ready — pure white, Amazon-spec.','ok');
+    setStatus(failed ? (done+' done, '+failed+' failed.') : (done+' image'+(done===1?'':'s')+' ready.'), failed?'err':'ok');
+  }
+
+  // Re-run only the framing/format compositing (no AI) when settings change
+  async function rebuildAll(){
+    const ready=items.filter(i=>i.status==='done'&&i.work);
+    if(!ready.length) return;
+    setStatus('Updating…','work');
+    for(const it of ready){ try{ await buildOutput(it); }catch(e){ it.status='error'; it.err=e.message; } }
+    render(); setStatus('Updated.','ok');
   }
 
   // --------------------------------------------------------------------------
-  // Intake
+  // Intake + render
   // --------------------------------------------------------------------------
   function addFiles(fileList){
     const imgs=[...fileList].filter(f=>f.type.startsWith('image/'));
     if(!imgs.length){ setStatus('Those weren\u2019t image files.','err'); return; }
-    for(const f of imgs){
-      items.push({id:nextId++, file:f, name:f.name, origURL:URL.createObjectURL(f), status:'queued'});
-    }
-    $('results-panel').style.display='';
-    $('clear').style.display='';
-    render();
-    runQueue();
+    for(const f of imgs) items.push({id:nextId++, file:f, name:f.name, origURL:URL.createObjectURL(f), status:'queued'});
+    $('results-panel').style.display=''; $('clear').style.display='';
+    render(); runQueue();
   }
 
   function render(){
-    const wrap=$('results');
-    wrap.innerHTML=items.map(it=>{
+    const isJpg=$('fmt').value==='jpg';
+    $('results').innerHTML=items.map(it=>{
       let body;
       if(it.status==='working') body='<div class="spin">Processing…</div>';
       else if(it.status==='queued') body='<div class="spin">Queued…</div>';
       else if(it.status==='error') body='<div class="rerr">'+(it.err||'Failed')+'</div>';
-      else {
-        const whiteCls = ($('fmt').value==='jpg') ? ' white' : '';
-        body=
-          '<div class="rcompare">'+
-            '<div><img class="thumb" src="'+it.origURL+'"><div class="tlabel">Original</div></div>'+
-            '<div class="arrow">\u2192</div>'+
-            '<div><img class="thumb'+whiteCls+'" src="'+it.url+'"><div class="tlabel">Result</div></div>'+
-          '</div>'+
-          '<div class="rmeta"><b>'+it.w+' \u00d7 '+it.h+'</b> px'+
-            ($('fmt').value==='jpg' ? ' \u00b7 <span class="pillnote">pure white \u2713</span>' : ' \u00b7 transparent PNG')+'</div>'+
-          '<button class="btn primary" data-dl="'+it.id+'" style="width:100%">Download '+
-            (it.outName||'image')+'</button>';
-      }
+      else body=
+        '<div class="rcompare">'+
+          '<div><img class="thumb" src="'+it.origURL+'"><div class="tlabel">Original</div></div>'+
+          '<div class="arrow">\u2192</div>'+
+          '<div><img class="thumb'+(isJpg?' white':'')+'" src="'+it.url+'"><div class="tlabel">Result</div></div>'+
+        '</div>'+
+        '<div class="rmeta"><b>'+it.w+' \u00d7 '+it.h+'</b> px'+(isJpg?' \u00b7 <span class="pillnote">pure white \u2713</span>':' \u00b7 transparent PNG')+'</div>'+
+        '<div class="rbtns">'+
+          '<button class="btn sm" data-edit="'+it.id+'">Touch up</button>'+
+          '<button class="btn primary sm" data-dl="'+it.id+'">Download</button>'+
+        '</div>';
       return '<div class="rcard"><div class="rname">'+it.name+'</div>'+body+'</div>';
     }).join('');
-    wrap.querySelectorAll('[data-dl]').forEach(b=>{
-      b.addEventListener('click',()=>{
-        const it=items.find(i=>i.id==b.dataset.dl); if(!it||!it.blob)return;
-        const a=document.createElement('a'); a.href=it.url; a.download=it.outName; a.click();
-      });
-    });
+    $('results').querySelectorAll('[data-dl]').forEach(b=>b.addEventListener('click',()=>{
+      const it=items.find(i=>i.id==b.dataset.dl); if(!it||!it.blob)return;
+      const a=document.createElement('a'); a.href=it.url; a.download=it.outName; a.click();
+    }));
+    $('results').querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',()=>{
+      const it=items.find(i=>i.id==b.dataset.edit); if(it) openEditor(it);
+    }));
   }
 
   async function downloadZip(){
     const ready=items.filter(i=>i.status==='done'&&i.blob);
     if(!ready.length) return;
-    if(typeof JSZip==='undefined'){ setStatus('Zip library didn\u2019t load — use the per-image buttons.','err'); return; }
-    const zip=new JSZip();
-    const used={};
-    for(const it of ready){
-      let n=it.outName; if(used[n]){ used[n]++; n=n.replace(/(\.[^.]+)$/,'_'+used[n]+'$1'); } else used[n]=1;
-      zip.file(n, it.blob);
-    }
+    if(typeof JSZip==='undefined'){ setStatus('Zip library didn\u2019t load — use per-image buttons.','err'); return; }
+    const zip=new JSZip(), used={};
+    for(const it of ready){ let n=it.outName; if(used[n]){ used[n]++; n=n.replace(/(\.[^.]+)$/,'_'+used[n]+'$1'); } else used[n]=1; zip.file(n,it.blob); }
     setStatus('Building zip…','work');
     const blob=await zip.generateAsync({type:'blob'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download='burlebo_white_backgrounds.zip'; a.click();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='burlebo_white_backgrounds.zip'; a.click();
     setStatus(ready.length+' images zipped.','ok');
   }
 
@@ -345,6 +394,86 @@
     $('results').innerHTML=''; $('results-panel').style.display='none';
     $('dl-all').style.display='none'; $('clear').style.display='none';
     $('reprocess').disabled=true; setStatus('');
+  }
+
+  // --------------------------------------------------------------------------
+  // Touch-up editor (brush restore / erase on item.work)
+  // --------------------------------------------------------------------------
+  const ed={item:null, mode:'restore', size:44, drawing:false, last:null, history:[]};
+
+  function drawEditor(){
+    const it=ed.item; if(!it) return;
+    const disp=$('ed-canvas');
+    // size display canvas to fit while preserving aspect
+    const maxW=700, maxH=Math.round(window.innerHeight*0.56);
+    let dw=it.work.width, dh=it.work.height;
+    const s=Math.min(maxW/dw, maxH/dh, 1); dw=Math.round(dw*s); dh=Math.round(dh*s);
+    disp.width=dw; disp.height=dh;
+    const ctx=disp.getContext('2d');
+    ctx.clearRect(0,0,dw,dh);
+    ctx.drawImage(it.work,0,0,dw,dh); // checker/white shows through via .ed-stage bg
+  }
+  function dispToWork(e){
+    const disp=$('ed-canvas'), r=disp.getBoundingClientRect();
+    const x=(e.clientX-r.left)*(disp.width/r.width);
+    const y=(e.clientY-r.top )*(disp.height/r.height);
+    const k=ed.item.work.width/disp.width;       // work px per display px
+    return {x:x*k, y:y*k, r:ed.size*k};
+  }
+  function paintStroke(a,b,radius){
+    const ctx=ed.item.work.getContext('2d');
+    const dist=Math.hypot(b.x-a.x,b.y-a.y), step=Math.max(radius/2.5,2), n=Math.max(1,Math.ceil(dist/step));
+    for(let i=0;i<=n;i++){
+      const x=a.x+(b.x-a.x)*i/n, y=a.y+(b.y-a.y)*i/n;
+      if(ed.mode==='erase'){
+        ctx.save(); ctx.globalCompositeOperation='destination-out';
+        ctx.beginPath(); ctx.arc(x,y,radius,0,7); ctx.fill(); ctx.restore();
+      } else {
+        ctx.save(); ctx.beginPath(); ctx.arc(x,y,radius,0,7); ctx.clip();
+        ctx.drawImage(ed.item.origImg,0,0,ed.item.work.width,ed.item.work.height); ctx.restore();
+      }
+    }
+  }
+  function pushHistory(){
+    const w=ed.item.work, ctx=w.getContext('2d');
+    ed.history.push(ctx.getImageData(0,0,w.width,w.height));
+    if(ed.history.length>5) ed.history.shift();
+  }
+  function openEditor(item){
+    ed.item=item; ed.mode='restore'; ed.history=[]; ed.last=null;
+    $('ed-name').textContent=item.name;
+    $('ed-mode').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.mode==='restore'));
+    $('ed-stage').classList.toggle('white', $('fmt').value==='jpg');
+    $('ed-overlay').classList.add('show');
+    drawEditor();
+  }
+  function closeEditor(){ $('ed-overlay').classList.remove('show'); ed.item=null; ed.history=[]; }
+
+  function wireEditor(){
+    const disp=$('ed-canvas');
+    const down=e=>{ if(!ed.item)return; e.preventDefault(); pushHistory(); ed.drawing=true; const p=dispToWork(e); ed.last=p; paintStroke(p,p,p.r); drawEditor(); };
+    const move=e=>{ if(!ed.drawing)return; e.preventDefault(); const p=dispToWork(e); paintStroke(ed.last,p,p.r); ed.last=p; drawEditor(); };
+    const up  =()=>{ ed.drawing=false; ed.last=null; };
+    disp.addEventListener('pointerdown',down);
+    disp.addEventListener('pointermove',move);
+    window.addEventListener('pointerup',up);
+
+    $('ed-mode').querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+      ed.mode=b.dataset.mode;
+      $('ed-mode').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    }));
+    $('ed-size').addEventListener('input',e=>ed.size=+e.target.value);
+    $('ed-undo').addEventListener('click',()=>{ if(!ed.history.length)return; const w=ed.item.work; w.getContext('2d').putImageData(ed.history.pop(),0,0); drawEditor(); });
+    $('ed-reset').addEventListener('click',()=>{ if(!ed.item)return; const w=ed.item.work,c=w.getContext('2d'); c.clearRect(0,0,w.width,w.height); c.drawImage(ed.item.cutImg,0,0,w.width,w.height); ed.history=[]; drawEditor(); });
+    $('ed-apply').addEventListener('click',async()=>{ const it=ed.item; closeEditor(); await buildOutput(it); render(); setStatus('Touch-up applied to '+it.name+'.','ok'); });
+    $('ed-cancel').addEventListener('click',()=>{
+      // revert to the cutout (drop unsaved strokes) only if nothing applied yet — simplest: reload from cutout
+      if(ed.item){ const w=ed.item.work,c=w.getContext('2d'); c.clearRect(0,0,w.width,w.height); c.drawImage(ed.item.cutImg,0,0,w.width,w.height); }
+      closeEditor();
+    });
+    $('ed-x').addEventListener('click',closeEditor);
+    $('ed-overlay').addEventListener('click',e=>{ if(e.target===$('ed-overlay')) closeEditor(); });
+    window.addEventListener('resize',()=>{ if(ed.item) drawEditor(); });
   }
 
   // --------------------------------------------------------------------------
@@ -358,11 +487,16 @@
     ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
     drop.addEventListener('drop',e=>{ if(e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 
+    $('framing').addEventListener('change',()=>{
+      $('pad-opt').classList.toggle('hide', $('framing').value==='keep');
+      rebuildAll();
+    });
+    $('pad').addEventListener('change',rebuildAll);
+    $('fmt').addEventListener('change',()=>{ rebuildAll(); });
     $('reprocess').addEventListener('click',()=>{ items.forEach(i=>i.status='queued'); render(); runQueue(); });
     $('dl-all').addEventListener('click',downloadZip);
     $('clear').addEventListener('click',clearAll);
-    // re-render thumbnails if the format toggle changes the result background
-    $('fmt').addEventListener('change',render);
+    wireEditor();
   }
 
   window.onAuthReady=function(){ loadSharedNav(); wire(); };
