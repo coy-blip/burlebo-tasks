@@ -65,6 +65,8 @@
   .rcard .rerr{font-size:12px;color:var(--red);padding:20px 0;text-align:center}
   .pillnote{display:inline-block;font-size:10px;font-weight:600;color:var(--green);background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);border-radius:999px;padding:2px 8px;margin-top:2px}
   .rbtns{display:flex;gap:8px}.rbtns .btn{flex:1}
+  .results-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .results-actions{display:flex;gap:8px}
   /* ---- touch-up editor ---- */
   .ed-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:1100;padding:20px}
   .ed-overlay.show{display:flex}
@@ -154,8 +156,6 @@
       </div>
       <div class="row-inline">
         <button class="btn" id="reprocess" disabled>Reprocess with current settings</button>
-        <button class="btn primary" id="dl-all" style="display:none">Download all (.zip)</button>
-        <button class="btn ghost" id="clear" style="display:none">Clear</button>
       </div>
     </div>
 
@@ -171,7 +171,13 @@
   </div>
 
   <div class="panel" id="results-panel" style="display:none">
-    <div class="panel-title">2 · Results</div>
+    <div class="results-head">
+      <div class="panel-title" style="margin:0">2 · Results</div>
+      <div class="results-actions">
+        <button class="btn primary sm" id="dl-all" style="display:none">Download all (.zip)</button>
+        <button class="btn ghost sm" id="clear">Clear all</button>
+      </div>
+    </div>
     <div class="results" id="results"></div>
   </div>
 </main>
@@ -389,7 +395,6 @@
     }
     processing=false; $('reprocess').disabled=false;
     const ready=items.filter(i=>i.status==='done').length;
-    $('dl-all').style.display = ready>1 ? '' : 'none';
     setStatus(failed ? (done+' done, '+failed+' failed.') : (done+' image'+(done===1?'':'s')+' ready.'), failed?'err':'ok');
   }
 
@@ -409,7 +414,7 @@
     const imgs=[...fileList].filter(f=>f.type.startsWith('image/'));
     if(!imgs.length){ setStatus('Those weren\u2019t image files.','err'); return; }
     for(const f of imgs) items.push({id:nextId++, file:f, name:f.name, origURL:URL.createObjectURL(f), status:'queued'});
-    $('results-panel').style.display=''; $('clear').style.display='';
+    $('results-panel').style.display='';
     render(); runQueue();
   }
 
@@ -440,11 +445,16 @@
     $('results').querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',()=>{
       const it=items.find(i=>i.id==b.dataset.edit); if(it) openEditor(it);
     }));
+    const readyCount=items.filter(i=>i.status==='done'&&i.blob).length;
+    const dl=$('dl-all');
+    dl.style.display = readyCount>=1 ? '' : 'none';
+    dl.textContent = readyCount>1 ? ('Download all ('+readyCount+') .zip') : 'Download';
   }
 
   async function downloadZip(){
     const ready=items.filter(i=>i.status==='done'&&i.blob);
     if(!ready.length) return;
+    if(ready.length===1){ const it=ready[0]; const a=document.createElement('a'); a.href=it.url; a.download=it.outName; a.click(); return; }
     if(typeof JSZip==='undefined'){ setStatus('Zip library didn\u2019t load — use per-image buttons.','err'); return; }
     const zip=new JSZip(), used={};
     for(const it of ready){ let n=it.outName; if(used[n]){ used[n]++; n=n.replace(/(\.[^.]+)$/,'_'+used[n]+'$1'); } else used[n]=1; zip.file(n,it.blob); }
@@ -458,7 +468,7 @@
     items.forEach(i=>{ if(i.origURL)URL.revokeObjectURL(i.origURL); if(i.url)URL.revokeObjectURL(i.url); });
     items.length=0;
     $('results').innerHTML=''; $('results-panel').style.display='none';
-    $('dl-all').style.display='none'; $('clear').style.display='none';
+    $('dl-all').style.display='none';
     $('reprocess').disabled=true; setStatus('');
   }
 
