@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>White Background Maker — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="/auth.js"></script>
+<style>
+  :root {
+    --bg:#0d0f12; --panel:#14171c; --panel-2:#1a1e25; --border:#252a33; --text:#e8eaed; --text-dim:#8a92a0;
+    --accent:#ff6b35; --green:#4ade80; --red:#f87171; --yellow:#fbbf24; --blue:#38bdf8; --purple:#a78bfa;
+    --radius:10px; --radius-sm:6px;
+    --coy:#ff6b35; --coy-bg:rgba(255,107,53,.15); --designer:#a78bfa; --designer-bg:rgba(167,139,250,.15);
+    --admin:#4ade80; --admin-bg:rgba(74,222,128,.15); --employee:#38bdf8; --employee-bg:rgba(56,189,248,.15);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif}
+  header{border-bottom:1px solid var(--border);padding:18px 32px;display:flex;align-items:center;justify-content:space-between;background:var(--panel)}
+  header h1{font-size:18px;font-weight:700;margin:0}
+  header nav{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  header nav a{color:var(--text-dim);text-decoration:none;font-size:14px;font-weight:500}
+  header nav a:hover{color:var(--text)} header nav a.active{color:var(--accent)}
+  .role-pill{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;cursor:pointer}
+  .role-pill:hover{opacity:.85}
+  .role-pill.coy{background:var(--coy-bg);color:var(--coy)} .role-pill.designer{background:var(--designer-bg);color:var(--designer)}
+  .role-pill.admin{background:var(--admin-bg);color:var(--admin)} .role-pill.employee{background:var(--employee-bg);color:var(--employee)}
+  main{max-width:1100px;margin:0 auto;padding:28px 32px} main.hidden{display:none}
+  .page-title{font-size:28px;font-weight:700;margin:0 0 4px} .page-sub{font-size:14px;color:var(--text-dim);margin:0 0 24px;line-height:1.6}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:20px}
+  .panel-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);margin:0 0 14px}
+  .drop{border:2px dashed var(--border);border-radius:var(--radius);padding:34px 18px;text-align:center;cursor:pointer;transition:.15s;background:var(--panel-2)}
+  .drop:hover{border-color:#3a4150}
+  .drop.over{border-color:var(--accent);background:rgba(255,107,53,.07)}
+  .drop .dz-label{font-size:15px;font-weight:600;margin-bottom:6px}
+  .drop .dz-hint{font-size:12px;color:var(--text-dim);line-height:1.5}
+  .opts{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;margin-top:18px}
+  .opt{display:flex;flex-direction:column;gap:6px}
+  .opt label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+  .opt select{padding:9px 11px;font-family:inherit;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);outline:none;min-width:170px}
+  .opt select:focus{border-color:var(--accent)}
+  .btn{padding:10px 20px;border-radius:var(--radius-sm);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel-2);color:var(--text)}
+  .btn:hover{background:#1f242c} .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:disabled{opacity:.4;cursor:not-allowed} .btn.ghost{background:transparent;color:var(--text-dim)}
+  .row-inline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px}
+  .rules{font-size:12px;color:var(--text-dim);line-height:1.7;margin-top:10px}
+  .rules b{color:var(--text)}
+  .status{font-size:13px;color:var(--text-dim);margin:4px 0 0;min-height:18px}
+  .status.work{color:var(--yellow)} .status.err{color:var(--red)} .status.ok{color:var(--green)}
+  .results{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .rcard{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+  .rcard .rname{font-size:13px;font-weight:600;word-break:break-all;margin-bottom:10px}
+  .rcompare{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-bottom:10px}
+  .thumb{width:100%;aspect-ratio:1;border-radius:var(--radius-sm);border:1px solid var(--border);background:
+    conic-gradient(#2a2f38 25%,#1d2128 0 50%,#2a2f38 0 75%,#1d2128 0) 0 0/16px 16px;object-fit:contain}
+  .thumb.white{background:#fff}
+  .arrow{color:var(--text-dim);font-size:18px}
+  .tlabel{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;text-align:center;margin-top:4px}
+  .rmeta{font-size:11px;color:var(--text-dim);margin-bottom:10px} .rmeta b{color:var(--text)}
+  .rcard .spin{font-size:12px;color:var(--yellow);padding:30px 0;text-align:center}
+  .rcard .rerr{font-size:12px;color:var(--red);padding:20px 0;text-align:center}
+  .pillnote{display:inline-block;font-size:10px;font-weight:600;color:var(--green);background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);border-radius:999px;padding:2px 8px;margin-top:2px}
+</style>
+</head>
+<body>
+
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav"><span class="role-pill" id="role-pill"></span></nav>
+</header>
+
+<main id="app-main" class="hidden">
+  <div class="page-title">White Background Maker</div>
+  <div class="page-sub">
+    Drop one or more product photos. The AI removes the background in your browser and drops the product onto a pure-white
+    canvas, framed and sized to Amazon main-image specs. Nothing leaves your device — all processing is local.
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">1 · Drop your product photos</div>
+    <div class="drop" id="drop">
+      <div class="dz-label">Drag &amp; drop images here, or click to choose</div>
+      <div class="dz-hint">JPG / PNG / WEBP — multiple at once is fine</div>
+    </div>
+    <input type="file" id="file-input" accept="image/*" multiple style="display:none">
+
+    <div class="opts">
+      <div class="opt">
+        <label for="shape">Output shape</label>
+        <select id="shape">
+          <option value="square" selected>Square (recommended)</option>
+          <option value="original">Keep original proportions</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label for="pad">Product framing</label>
+        <select id="pad">
+          <option value="0.92">Tight (fills ~92%)</option>
+          <option value="0.85" selected>Standard — Amazon min (~85%)</option>
+          <option value="0.78">Roomy (fills ~78%)</option>
+        </select>
+      </div>
+      <div class="opt">
+        <label for="fmt">Background / format</label>
+        <select id="fmt">
+          <option value="jpg" selected>Pure white · JPEG (Amazon main image)</option>
+          <option value="png">Transparent · PNG (cutout only)</option>
+        </select>
+      </div>
+      <div class="row-inline">
+        <button class="btn" id="reprocess" disabled>Reprocess with current settings</button>
+        <button class="btn primary" id="dl-all" style="display:none">Download all (.zip)</button>
+        <button class="btn ghost" id="clear" style="display:none">Clear</button>
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="rules">
+      <b>Amazon main-image specs this matches:</b> pure white background (RGB 255,255,255) · product fills ≥85% of the frame ·
+      sRGB JPEG · longest side scaled to 1600px so listing zoom works. First image takes longer — the AI model (~40&nbsp;MB)
+      downloads once and is then cached for the rest of the session.
+    </div>
+  </div>
+
+  <div class="panel" id="results-panel" style="display:none">
+    <div class="panel-title">2 · Results</div>
+    <div class="results" id="results"></div>
+  </div>
+</main>
+
+<script>
+  // --------------------------------------------------------------------------
+  // Shared nav (same pattern as the other tool pages)
+  // --------------------------------------------------------------------------
+  async function loadSharedNav(){
+    try{
+      const r=await fetch('/nav.html',{cache:'no-cache'}); if(!r.ok)return;
+      const html=await r.text(); const nav=document.getElementById('main-nav'); const pill=document.getElementById('role-pill');
+      const tmp=document.createElement('div'); tmp.innerHTML=html;
+      const here=window.location.pathname.replace(/\/$/,'')||'/';
+      for(const a of tmp.querySelectorAll('a')){ const href=a.getAttribute('href');
+        if(href===here||(href==='/'&&here==='/'))a.classList.add('active'); nav.insertBefore(a,pill); }
+    }catch(e){console.error('Nav load failed:',e)}
+  }
+
+  // --------------------------------------------------------------------------
+  // Background-removal library — loaded lazily on first use (dynamic import so
+  // the page + auth stay instant and the heavy JS only loads when needed).
+  // --------------------------------------------------------------------------
+  const BG_LIB = 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/+esm';
+  let _removeBg = null;
+  async function getRemover(){
+    if(_removeBg) return _removeBg;
+    setStatus('Loading AI model (one-time)…','work');
+    const mod = await import(BG_LIB);
+    _removeBg = mod.default || mod.removeBackground;
+    if(typeof _removeBg !== 'function') throw new Error('Background-removal library failed to load.');
+    return _removeBg;
+  }
+
+  // --------------------------------------------------------------------------
+  // State
+  // --------------------------------------------------------------------------
+  const TARGET_MIN_LONG = 1600;   // upscale so the long side is at least this
+  const MAX_LONG        = 3000;   // never exceed this (keeps files reasonable)
+  const ALPHA_THRESH    = 12;     // pixel counts as "product" above this alpha
+  const items = [];               // {id, file, name, origURL, status, blob, url, w, h, err}
+  let processing = false;
+  let nextId = 1;
+
+  const $ = id => document.getElementById(id);
+  function setStatus(msg, cls){ const s=$('status'); s.textContent=msg||''; s.className='status'+(cls?' '+cls:''); }
+
+  // --------------------------------------------------------------------------
+  // Core: bg removal -> bounding box -> white/transparent canvas at Amazon spec
+  // --------------------------------------------------------------------------
+  function loadBitmap(blobOrFile){
+    return new Promise((res,rej)=>{
+      const img=new Image();
+      img.onload=()=>res(img);
+      img.onerror=()=>rej(new Error('Could not decode image.'));
+      img.src=URL.createObjectURL(blobOrFile);
+    });
+  }
+
+  function findBBox(data, w, h){
+    let minX=w, minY=h, maxX=-1, maxY=-1;
+    for(let y=0; y<h; y++){
+      for(let x=0; x<w; x++){
+        if(data[(y*w+x)*4+3] > ALPHA_THRESH){
+          if(x<minX)minX=x; if(x>maxX)maxX=x;
+          if(y<minY)minY=y; if(y>maxY)maxY=y;
+        }
+      }
+    }
+    if(maxX<0) return null; // fully transparent (no subject found)
+    return {minX,minY,maxX,maxY};
+  }
+
+  async function processOne(item){
+    const remove = await getRemover();
+    setStatus('Removing background — '+item.name+'…','work');
+
+    // 1) AI background removal -> PNG blob with transparency
+    const cutoutBlob = await remove(item.file, {
+      progress:(key,cur,tot)=>{
+        if(tot && /fetch|download/i.test(key)){
+          setStatus('Loading AI model (one-time)… '+Math.round((cur/tot)*100)+'%','work');
+        }
+      }
+    });
+
+    // 2) Draw cutout, read alpha, find product bounds
+    const cut = await loadBitmap(cutoutBlob);
+    const scan = document.createElement('canvas');
+    scan.width=cut.width; scan.height=cut.height;
+    const sctx=scan.getContext('2d',{willReadFrequently:true});
+    sctx.drawImage(cut,0,0);
+    const bbox = findBBox(sctx.getImageData(0,0,cut.width,cut.height).data, cut.width, cut.height);
+    if(!bbox) throw new Error('No subject detected in this image.');
+
+    const pw=bbox.maxX-bbox.minX+1, ph=bbox.maxY-bbox.minY+1;
+
+    // 3) Decide output frame from product framing + shape settings
+    const ratio = parseFloat($('pad').value);   // product fills this fraction of the frame's limiting side
+    const square = $('shape').value === 'square';
+    let cw, ch;
+    if(square){ const side=Math.max(pw,ph)/ratio; cw=side; ch=side; }
+    else { cw=pw/ratio; ch=ph/ratio; }
+
+    // 4) Scale so the long side lands in [TARGET_MIN_LONG, MAX_LONG]
+    let scale=1; const longest=Math.max(cw,ch);
+    if(longest<TARGET_MIN_LONG) scale=TARGET_MIN_LONG/longest;
+    else if(longest>MAX_LONG)   scale=MAX_LONG/longest;
+    const W=Math.round(cw*scale), H=Math.round(ch*scale);
+
+    // 5) Composite: fill (white for jpg), draw scaled cutout centered on bbox
+    const out=document.createElement('canvas');
+    out.width=W; out.height=H;
+    const octx=out.getContext('2d');
+    octx.imageSmoothingEnabled=true; octx.imageSmoothingQuality='high';
+    const isJpg = $('fmt').value === 'jpg';
+    if(isJpg){ octx.fillStyle='#ffffff'; octx.fillRect(0,0,W,H); }
+
+    const drawX = (W - pw*scale)/2 - bbox.minX*scale;
+    const drawY = (H - ph*scale)/2 - bbox.minY*scale;
+    octx.drawImage(cut, drawX, drawY, cut.width*scale, cut.height*scale);
+
+    // 6) Export
+    const type = isJpg ? 'image/jpeg' : 'image/png';
+    const q    = isJpg ? 0.92 : undefined;
+    const blob = await new Promise(r=> out.toBlob(r, type, q));
+    if(item.url) URL.revokeObjectURL(item.url);
+    item.blob=blob; item.url=URL.createObjectURL(blob); item.w=W; item.h=H;
+    item.outName = item.name.replace(/\.[^.]+$/,'') + (isJpg ? '_white.jpg' : '_cutout.png');
+  }
+
+  async function runQueue(){
+    if(processing) return;
+    processing=true;
+    $('reprocess').disabled=true;
+    let done=0, failed=0;
+    for(const item of items){
+      item.status='working'; item.err=null; render();
+      try{ await processOne(item); item.status='done'; done++; }
+      catch(e){ console.error(e); item.status='error'; item.err=(e&&e.message)||'Failed.'; failed++; }
+      render();
+    }
+    processing=false;
+    $('reprocess').disabled=false;
+    const ready=items.filter(i=>i.status==='done').length;
+    $('dl-all').style.display = ready>1 ? '' : 'none';
+    if(failed) setStatus(done+' done, '+failed+' failed.','err');
+    else setStatus(done+' image'+(done===1?'':'s')+' ready — pure white, Amazon-spec.','ok');
+  }
+
+  // --------------------------------------------------------------------------
+  // Intake
+  // --------------------------------------------------------------------------
+  function addFiles(fileList){
+    const imgs=[...fileList].filter(f=>f.type.startsWith('image/'));
+    if(!imgs.length){ setStatus('Those weren\u2019t image files.','err'); return; }
+    for(const f of imgs){
+      items.push({id:nextId++, file:f, name:f.name, origURL:URL.createObjectURL(f), status:'queued'});
+    }
+    $('results-panel').style.display='';
+    $('clear').style.display='';
+    render();
+    runQueue();
+  }
+
+  function render(){
+    const wrap=$('results');
+    wrap.innerHTML=items.map(it=>{
+      let body;
+      if(it.status==='working') body='<div class="spin">Processing…</div>';
+      else if(it.status==='queued') body='<div class="spin">Queued…</div>';
+      else if(it.status==='error') body='<div class="rerr">'+(it.err||'Failed')+'</div>';
+      else {
+        const whiteCls = ($('fmt').value==='jpg') ? ' white' : '';
+        body=
+          '<div class="rcompare">'+
+            '<div><img class="thumb" src="'+it.origURL+'"><div class="tlabel">Original</div></div>'+
+            '<div class="arrow">\u2192</div>'+
+            '<div><img class="thumb'+whiteCls+'" src="'+it.url+'"><div class="tlabel">Result</div></div>'+
+          '</div>'+
+          '<div class="rmeta"><b>'+it.w+' \u00d7 '+it.h+'</b> px'+
+            ($('fmt').value==='jpg' ? ' \u00b7 <span class="pillnote">pure white \u2713</span>' : ' \u00b7 transparent PNG')+'</div>'+
+          '<button class="btn primary" data-dl="'+it.id+'" style="width:100%">Download '+
+            (it.outName||'image')+'</button>';
+      }
+      return '<div class="rcard"><div class="rname">'+it.name+'</div>'+body+'</div>';
+    }).join('');
+    wrap.querySelectorAll('[data-dl]').forEach(b=>{
+      b.addEventListener('click',()=>{
+        const it=items.find(i=>i.id==b.dataset.dl); if(!it||!it.blob)return;
+        const a=document.createElement('a'); a.href=it.url; a.download=it.outName; a.click();
+      });
+    });
+  }
+
+  async function downloadZip(){
+    const ready=items.filter(i=>i.status==='done'&&i.blob);
+    if(!ready.length) return;
+    if(typeof JSZip==='undefined'){ setStatus('Zip library didn\u2019t load — use the per-image buttons.','err'); return; }
+    const zip=new JSZip();
+    const used={};
+    for(const it of ready){
+      let n=it.outName; if(used[n]){ used[n]++; n=n.replace(/(\.[^.]+)$/,'_'+used[n]+'$1'); } else used[n]=1;
+      zip.file(n, it.blob);
+    }
+    setStatus('Building zip…','work');
+    const blob=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='burlebo_white_backgrounds.zip'; a.click();
+    setStatus(ready.length+' images zipped.','ok');
+  }
+
+  function clearAll(){
+    items.forEach(i=>{ if(i.origURL)URL.revokeObjectURL(i.origURL); if(i.url)URL.revokeObjectURL(i.url); });
+    items.length=0;
+    $('results').innerHTML=''; $('results-panel').style.display='none';
+    $('dl-all').style.display='none'; $('clear').style.display='none';
+    $('reprocess').disabled=true; setStatus('');
+  }
+
+  // --------------------------------------------------------------------------
+  // Wiring
+  // --------------------------------------------------------------------------
+  function wire(){
+    const drop=$('drop'), input=$('file-input');
+    drop.addEventListener('click',()=>input.click());
+    input.addEventListener('change',e=>{ if(e.target.files.length) addFiles(e.target.files); input.value=''; });
+    ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+    ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+    drop.addEventListener('drop',e=>{ if(e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+
+    $('reprocess').addEventListener('click',()=>{ items.forEach(i=>i.status='queued'); render(); runQueue(); });
+    $('dl-all').addEventListener('click',downloadZip);
+    $('clear').addEventListener('click',clearAll);
+    // re-render thumbnails if the format toggle changes the result background
+    $('fmt').addEventListener('change',render);
+  }
+
+  window.onAuthReady=function(){ loadSharedNav(); wire(); };
+</script>
+</body>
+</html>
