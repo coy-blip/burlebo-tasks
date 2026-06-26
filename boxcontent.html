@@ -68,6 +68,14 @@
   .seg button.on{background:var(--accent);color:#fff}
   .problems b{color:var(--text)}
   details{margin-top:0} summary{cursor:pointer;color:var(--text-dim);font-size:12px;font-weight:600;margin-bottom:10px}
+  .ship-card{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .ship-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .ship-name{font-size:13px;font-weight:700;color:var(--text)}
+  .ship-range{font-size:12px;font-weight:600;color:var(--accent);background:var(--coy-bg);padding:3px 10px;border-radius:999px}
+  .ship-range.empty{color:var(--text-dim);background:var(--panel)}
+  .ship-remove{margin-left:auto;border:1px solid var(--border);background:var(--panel);color:var(--text-dim);width:28px;height:28px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:700;line-height:1}
+  .ship-remove:hover{color:var(--red);border-color:var(--red)}
+  .ship-card textarea{min-height:150px;margin:0}
 </style>
 </head>
 <body>
@@ -93,9 +101,13 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">2 · Paste box manifest</div>
-    <textarea id="manifest" placeholder="Box 1&#10;LPN-BO49152&#10;...&#10;118 Eaches&#10;118&#10;BIG BOX - LARGE&#10;22.00&#10;x&#10;16.00&#10;x&#10;16.00&#10;38.84&#10;Youth Go To Tee - Classic Deer Camo Medium thumbnail&#10;Youth Go To Tee - C...&#10;SKU Y-GTT-CDC-M&#10;20&#10;...&#10;Box 2 ..."></textarea>
+    <div class="panel-title">2 · Paste box manifest(s)</div>
+    <div class="hint" style="margin-bottom:14px">One card per ShipHero order. Each ShipHero order restarts its box numbers at 1 — they're stitched together here so the boxes run continuously on the Amazon sheet. Shipment 2's Box 1 becomes the next Amazon box after Shipment 1 ends. The range badge on each card shows exactly which Amazon boxes it will fill.</div>
+    <div id="shipments"></div>
     <div class="row-inline">
+      <button class="btn" id="addShipBtn">+ Add ShipHero Shipment</button>
+    </div>
+    <div class="row-inline" style="margin-top:16px">
       <button class="btn primary" id="parseBtn" disabled>Parse &amp; match</button>
       <span class="hint" id="parseHint">Load a template first.</span>
     </div>
@@ -283,12 +295,68 @@ function parseManifest(txt){
   });
 }
 
+/* ---------- ShipHero shipment cards ---------- */
+let SHIP_SEQ=0;
+function shipCardHtml(id){
+  return `<div class="ship-card" data-id="${id}">
+    <div class="ship-head">
+      <span class="ship-name"></span>
+      <span class="ship-range empty">no boxes yet</span>
+      <button class="ship-remove" title="Remove this shipment">✕</button>
+    </div>
+    <textarea class="sh-text" placeholder="Box 1&#10;LPN-BO49152&#10;...&#10;118 Eaches&#10;118&#10;BIG BOX - LARGE&#10;22.00&#10;x&#10;16.00&#10;x&#10;16.00&#10;38.84&#10;Youth Go To Tee - Classic Deer Camo Medium thumbnail&#10;Youth Go To Tee - C...&#10;SKU Y-GTT-CDC-M&#10;20&#10;...&#10;Box 2 ..."></textarea>
+  </div>`;
+}
+function addShipment(){
+  const id=++SHIP_SEQ;
+  const wrap=document.createElement('div'); wrap.innerHTML=shipCardHtml(id);
+  const card=wrap.firstElementChild;
+  $('shipments').appendChild(card);
+  card.querySelector('.sh-text').addEventListener('input',updateRanges);
+  card.querySelector('.ship-remove').addEventListener('click',()=>{ card.remove(); renumberShipments(); updateRanges(); });
+  renumberShipments(); updateRanges();
+}
+function renumberShipments(){
+  const cards=[...document.querySelectorAll('.ship-card')];
+  cards.forEach((c,i)=>{ c.querySelector('.ship-name').textContent='ShipHero Shipment '+(i+1); });
+  cards.forEach(c=>{ c.querySelector('.ship-remove').style.display = cards.length>1?'':'none'; });
+}
+function countBoxes(txt){
+  let n=0; for(const l of txt.split(/\r?\n/)){ if(/^Box\s+\d+\s*$/i.test(l.trim())) n++; } return n;
+}
+function updateRanges(){
+  const cards=[...document.querySelectorAll('.ship-card')];
+  let end=0;
+  cards.forEach(c=>{
+    const n=countBoxes(c.querySelector('.sh-text').value);
+    const tag=c.querySelector('.ship-range');
+    if(n===0){ tag.textContent='no boxes yet'; tag.classList.add('empty'); }
+    else{ const start=end+1; end+=n; tag.textContent=`→ Amazon boxes ${start}–${end}`; tag.classList.remove('empty'); }
+  });
+}
+
 /* ---------- run ---------- */
 function init(){ wireTemplateInput();
+  addShipment();
+  $('addShipBtn').addEventListener('click',addShipment);
   $('parseBtn').addEventListener('click',()=>{
-    if(!TPL)return; const txt=$('manifest').value;
-    if(!txt.trim()){$('parseHint').textContent='Paste the manifest first.';return;}
-    BOXES=parseManifest(txt); render();
+    if(!TPL)return;
+    const cards=[...document.querySelectorAll('.ship-card')];
+    const all=[]; let offset=0; let anyText=false;
+    cards.forEach((c,idx)=>{
+      const txt=c.querySelector('.sh-text').value;
+      if(!txt.trim())return;
+      anyText=true;
+      const boxes=parseManifest(txt).sort((a,b)=>a.boxNum-b.boxNum);
+      boxes.forEach(b=>{
+        b.shipheroBox=b.boxNum;   // box number as ShipHero printed it
+        b.shipment=idx+1;         // which ShipHero card it came from
+        b.boxNum=++offset;        // continuous Amazon box number across all shipments
+        all.push(b);
+      });
+    });
+    if(!anyText){$('parseHint').textContent='Paste at least one shipment first.';return;}
+    BOXES=all; render();
   });
   $('dimSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;DIMORDER=b.dataset.d;[...$('dimSeg').children].forEach(x=>x.classList.toggle('on',x===b));});
   $('exportBtn').addEventListener('click',doExport);
@@ -343,7 +411,7 @@ function buildSkuTable(){
   $('skuTable').innerHTML=html+'</tbody>';
 }
 function buildBoxTable(){
-  let html='<thead><tr><th>Box</th><th>Col</th><th class="r">SKUs</th><th class="r">Parsed sum</th><th class="r">Stated total</th><th class="r">Weight →sheet (orig)</th><th>L×W×H</th><th>Status</th></tr></thead><tbody>';
+  let html='<thead><tr><th>Amazon box</th><th>Source</th><th>Col</th><th class="r">SKUs</th><th class="r">Parsed sum</th><th class="r">Stated total</th><th class="r">Weight →sheet (orig)</th><th>L×W×H</th><th>Status</th></tr></thead><tbody>';
   BOXES.forEach(b=>{
     const col=colName(TPL.firstBoxCol+(b.boxNum-1));
     let cls='tag-ok',lab='✓';
@@ -353,7 +421,8 @@ function buildBoxTable(){
     const ow=outW(b.weight);
     const capped=b.weight!=null && b.weight*WEIGHT_BUMP>MAX_BOX_WEIGHT;
     const wDisp = b.weight==null ? '' : (capped ? `${ow} <span class="tag tag-warn">cap</span> <span class="hint">(${b.weight})</span>` : `${ow} <span class="hint">(${b.weight})</span>`);
-    html+=`<tr><td>Box ${b.boxNum}</td><td class="mono">${col}</td><td class="r">${b.lines.length}</td><td class="r">${b.parsedSum}</td><td class="r">${b.total??''}</td><td class="r">${wDisp}</td><td class="mono">${d}</td><td><span class="tag ${cls}">${lab}</span></td></tr>`;
+    const src = `S${b.shipment??1} · Box ${b.shipheroBox??b.boxNum}`;
+    html+=`<tr><td>Box ${b.boxNum}</td><td class="mono">${src}</td><td class="mono">${col}</td><td class="r">${b.lines.length}</td><td class="r">${b.parsedSum}</td><td class="r">${b.total??''}</td><td class="r">${wDisp}</td><td class="mono">${d}</td><td><span class="tag ${cls}">${lab}</span></td></tr>`;
   });
   $('boxTable').innerHTML=html+'</tbody>';
 }
