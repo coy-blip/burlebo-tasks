@@ -230,10 +230,11 @@
     aplus = {}; (data||[]).forEach(r => { aplus[r.group_name] = r; });
   }
   const allGroups = () => [...new Set(skus.map(s => s.group_name))].sort((a,b) => a.localeCompare(b));
+  const aplusUniverse = () => [...new Set([...skus.map(s => s.group_name), ...Object.keys(aplus)])].sort((a,b) => a.localeCompare(b));
   const aplusCounts = () => {
-    const gs = allGroups(); let d = 0;
-    gs.forEach(g => { if (aplus[g] && aplus[g].done) d++; });
-    return { needs: gs.length - d, done: d };
+    const gs = aplusUniverse(); let d = 0, needs = 0;
+    gs.forEach(g => { const r = aplus[g]; if (r && r.done) d++; else if (!(r && r.not_selling)) needs++; });
+    return { needs, done: d };
   };
   async function saveAplusLink(group, link) {
     link = (link||'').trim();
@@ -248,9 +249,21 @@
     toast('Marked A+ complete');
   }
   async function reopenAplus(group) {
-    const { error } = await sb.from('aplus_content').upsert({ group_name:group, dropbox_link:null, done:false, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
+    const { error } = await sb.from('aplus_content').upsert({ group_name:group, dropbox_link:null, done:false, not_selling:false, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
     if (error) { toast('Failed'); return; }
     toast('Moved back to Needs A+');
+  }
+  async function markNotSelling(group) {
+    const { error } = await sb.from('aplus_content').upsert({ group_name:group, done:false, not_selling:true, dropbox_link:null, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
+    if (error) { toast('Failed'); console.error(error); return; }
+    toast('Marked not selling');
+  }
+  async function addAplusGroup(name) {
+    name = (name||'').trim();
+    if (!name) { toast('Name the group first'); return; }
+    const { error } = await sb.from('aplus_content').upsert({ group_name:name, done:false, not_selling:false, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
+    if (error) { toast('Add failed'); console.error(error); return; }
+    toast('Group added');
   }
   async function patch(id, fields) {
     fields.updated_at = new Date().toISOString();
@@ -339,35 +352,66 @@
 
   function renderAplus(kind) {
     const done = kind === 'aplus_done';
-    const gs = allGroups().filter(g => done ? (aplus[g] && aplus[g].done) : !(aplus[g] && aplus[g].done));
+    const uni = aplusUniverse();
+    const needsGs = uni.filter(g => { const r = aplus[g]; return !(r && r.done) && !(r && r.not_selling); });
+    const doneGs  = uni.filter(g => { const r = aplus[g]; return r && r.done; });
+    const nsGs    = uni.filter(g => { const r = aplus[g]; return r && r.not_selling && !r.done; });
+    const isCoy = ROLE === 'coy';
 
     let html = `<div class="vhead"><div><h2>${done ? 'A+ Content Done' : 'Needs A+ Content'}</h2>
-      <p class="hint">A+ content is set per product group.</p></div></div>`;
-    if (!done) html += `<div class="note">Each product group moves to \u201CA+ Content Done\u201D as soon as a Dropbox link is added.</div>`;
+      <p class="hint">A+ content is set per product group.</p></div>
+      ${(!done && isCoy) ? `<button class="btn primary" data-act="aplus-addgroup-open">+ Add group</button>` : ''}</div>`;
 
-    if (!gs.length) {
-      html += `<div class="empty"><p>${done ? 'Nothing completed yet.' : 'All product groups have A+ content. \uD83C\uDF89'}</p></div>`;
+    if (!done) {
+      if (isCoy && state.adding) {
+        html += `<div class="form">
+          <div><label>New A+ group name</label><input id="fAplusGroup" class="inp" placeholder="e.g. Holiday Collection"></div>
+          <div class="frow"><button class="btn ghost" data-act="aplus-addgroup-cancel">Cancel</button><button class="btn primary" data-act="aplus-addgroup-save">Add group</button></div>
+        </div>`;
+      }
+      html += `<div class="note">Each product group moves to \u201CA+ Content Done\u201D as soon as a Dropbox link is added.</div>`;
+    }
+
+    if (!done) {
+      if (!needsGs.length) {
+        html += `<div class="empty"><p>All product groups have A+ content. \uD83C\uDF89</p></div>`;
+      } else {
+        html += `<div class="skulist">` + needsGs.map(g => {
+          const buttons = isCoy ? `
+            <button class="tbtn nogo" data-act="aplus-notselling" data-group="${esc(g)}">Not selling</button>
+            <button class="tbtn sell" data-act="aplus-complete" data-group="${esc(g)}">Mark complete</button>` : '';
+          return `<div class="sku"><div class="slabel">${esc(g)}</div>
+            <div class="linkzone">
+              <input class="inp aplus-input" type="url" placeholder="Paste Dropbox link\u2026" data-group="${esc(g)}">
+              <button class="btn primary" data-act="aplus-save" data-group="${esc(g)}">Save</button>
+            </div>
+            <div class="rowtools">${buttons}</div></div>`;
+        }).join('') + `</div>`;
+      }
       $('view').innerHTML = html; return;
     }
 
-    html += `<div class="skulist">` + gs.map(g => {
-      if (!done) {
-        const complete = (ROLE !== 'designer')
-          ? `<button class="tbtn sell" data-act="aplus-complete" data-group="${esc(g)}">Mark complete</button>` : '';
-        return `<div class="sku"><div class="slabel">${esc(g)}</div>
-          <div class="linkzone">
-            <input class="inp aplus-input" type="url" placeholder="Paste Dropbox link\u2026" data-group="${esc(g)}">
-            <button class="btn primary" data-act="aplus-save" data-group="${esc(g)}">Save</button>
-          </div>
-          <div class="rowtools">${complete}</div></div>`;
-      }
-      const rec = aplus[g] || {};
-      const shown = rec.dropbox_link
-        ? `<a class="openlink" href="${esc(rec.dropbox_link)}" target="_blank" rel="noopener">Open ↗</a>`
-        : `<span class="aplus-status">✓ Marked complete</span>`;
-      return `<div class="sku"><div class="slabel">${esc(g)}</div>${shown}
-        <div class="rowtools"><button class="tbtn" data-act="aplus-reopen" data-group="${esc(g)}">↩ Back to Needs</button></div></div>`;
-    }).join('') + `</div>`;
+    // Done tab
+    if (!doneGs.length && !nsGs.length) {
+      html += `<div class="empty"><p>Nothing completed yet.</p></div>`;
+      $('view').innerHTML = html; return;
+    }
+    if (doneGs.length) {
+      html += `<div class="skulist">` + doneGs.map(g => {
+        const rec = aplus[g] || {};
+        const shown = rec.dropbox_link
+          ? `<a class="openlink" href="${esc(rec.dropbox_link)}" target="_blank" rel="noopener">Open ↗</a>`
+          : `<span class="aplus-status">✓ Marked complete</span>`;
+        return `<div class="sku"><div class="slabel">${esc(g)}</div>${shown}
+          <div class="rowtools"><button class="tbtn" data-act="aplus-reopen" data-group="${esc(g)}">↩ Back to Needs</button></div></div>`;
+      }).join('') + `</div>`;
+    }
+    if (nsGs.length) {
+      html += `<div class="note" style="margin-top:22px;border-left-color:var(--purple)">Not selling — no A+ needed.</div>`;
+      html += `<div class="skulist">` + nsGs.map(g => `<div class="sku"><div class="slabel">${esc(g)}</div>
+        <span class="livebadge nogo-badge">Not selling</span>
+        <div class="rowtools"><button class="tbtn" data-act="aplus-reopen" data-group="${esc(g)}">↩ Back to Needs</button></div></div>`).join('') + `</div>`;
+    }
     $('view').innerHTML = html;
   }
 
@@ -470,6 +514,7 @@
     handle(el.dataset.act, el);
   });
   document.getElementById('app-main').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.id === 'fAplusGroup') { e.preventDefault(); saveAplusGroup(); return; }
     if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('aplus-input')) {
       e.preventDefault(); saveAplusLink(e.target.dataset.group, e.target.value); return;
     }
@@ -496,6 +541,10 @@
       case 'aplus-save': { const row = el.closest('.sku'); const inp = row ? row.querySelector('.aplus-input') : null; saveAplusLink(el.dataset.group, inp ? inp.value : ''); break; }
       case 'aplus-complete': markAplusComplete(el.dataset.group); break;
       case 'aplus-reopen': reopenAplus(el.dataset.group); break;
+      case 'aplus-notselling': markNotSelling(el.dataset.group); break;
+      case 'aplus-addgroup-open': state.adding = true; renderView(); $('fAplusGroup')?.focus(); break;
+      case 'aplus-addgroup-cancel': state.adding = false; renderView(); break;
+      case 'aplus-addgroup-save': saveAplusGroup(); break;
       case 'addgroup-open': state.adding = true; renderView(); $('fGroup')?.focus(); break;
       case 'addgroup-cancel': state.adding = false; renderView(); break;
       case 'addgroup-save': saveNewGroup(); break;
@@ -516,6 +565,11 @@
     const list = parseLines($('fSkus').value);
     if (!list.length) { toast('Add at least one SKU'); return; }
     state.adding = false; await addSkus(state.group, list);
+  }
+  function saveAplusGroup() {
+    const n = ($('fAplusGroup')?.value || '').trim();
+    if (!n) { toast('Name the group first'); return; }
+    state.adding = false; addAplusGroup(n);
   }
 
   let tT; function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tT); tT = setTimeout(() => t.classList.remove('show'), 1800); }
