@@ -27,7 +27,10 @@
   .role-pill:hover{opacity:.85}
   .role-pill.coy{background:var(--coy-bg);color:var(--coy)} .role-pill.designer{background:var(--designer-bg);color:var(--designer)}
   .role-pill.admin{background:var(--admin-bg);color:var(--admin)} .role-pill.employee{background:var(--employee-bg);color:var(--employee)}
-  main{max-width:1100px;margin:0 auto;padding:28px 32px} main.hidden{display:none}
+  main{max-width:1440px;margin:0 auto;padding:28px 32px} main.hidden{display:none}
+  .tools-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  .tool-col{min-width:0}
+  @media (max-width:1000px){ .tools-grid{grid-template-columns:1fr} }
   .page-title{font-size:28px;font-weight:700;margin:0 0 4px} .page-sub{font-size:14px;color:var(--text-dim);margin:0 0 24px;line-height:1.6}
   .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:20px}
   .panel-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);margin:0 0 14px}
@@ -84,6 +87,19 @@
   .ed-controls .lab{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
   input[type=range]{accent-color:var(--accent)}
   .ed-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+
+  /* square crop tool */
+  .crop-stage{position:relative;display:inline-block;max-width:100%;line-height:0;background:#000;border-radius:var(--radius-sm);overflow:hidden;user-select:none;touch-action:none;margin-top:14px}
+  .crop-stage img{max-width:100%;max-height:60vh;display:block}
+  .crop-sel{position:absolute;box-sizing:border-box;border:2px solid var(--accent);box-shadow:0 0 0 9999px rgba(0,0,0,.62);cursor:move}
+  .crop-sel::before,.crop-sel::after{content:"";position:absolute;background:rgba(255,255,255,.35)}
+  .crop-sel::before{left:33.3%;right:33.3%;top:0;bottom:0;border-left:1px solid rgba(255,255,255,.35);border-right:1px solid rgba(255,255,255,.35);background:none}
+  .crop-sel::after{top:33.3%;bottom:33.3%;left:0;right:0;border-top:1px solid rgba(255,255,255,.35);border-bottom:1px solid rgba(255,255,255,.35);background:none}
+  .crop-handle{position:absolute;width:16px;height:16px;background:var(--accent);border:2px solid #fff;border-radius:3px;z-index:2}
+  .crop-handle[data-h=nw]{left:-9px;top:-9px;cursor:nwse-resize}
+  .crop-handle[data-h=ne]{right:-9px;top:-9px;cursor:nesw-resize}
+  .crop-handle[data-h=sw]{left:-9px;bottom:-9px;cursor:nesw-resize}
+  .crop-handle[data-h=se]{right:-9px;bottom:-9px;cursor:nwse-resize}
   .ed-hint{font-size:11px;color:var(--text-dim);line-height:1.6;margin-top:10px}
 </style>
 </head>
@@ -103,6 +119,8 @@
     leaves your device.
   </div>
 
+  <div class="tools-grid">
+  <div class="tool-col">
   <div class="panel">
     <div class="panel-title">1 · Drop your product photos</div>
     <div class="drop" id="drop">
@@ -180,6 +198,54 @@
     </div>
     <div class="results" id="results"></div>
   </div>
+  </div><!-- /tool-col (left: white background maker) -->
+
+  <div class="tool-col">
+    <div class="panel">
+      <div class="panel-title">Square Crop · Lifestyle</div>
+      <div class="drop" id="crop-drop">
+        <div class="dz-label">Drop a lifestyle image, or click to choose</div>
+        <div class="dz-hint">Crops to a perfect 1:1 square — the image itself is never edited</div>
+      </div>
+      <input type="file" id="crop-file" accept="image/*" style="display:none">
+
+      <div id="crop-stage-wrap" style="display:none">
+        <div class="crop-stage" id="crop-stage">
+          <img id="crop-img" alt="">
+          <div class="crop-sel" id="crop-sel">
+            <div class="crop-handle" data-h="nw"></div>
+            <div class="crop-handle" data-h="ne"></div>
+            <div class="crop-handle" data-h="sw"></div>
+            <div class="crop-handle" data-h="se"></div>
+          </div>
+        </div>
+
+        <div class="opts" style="margin-top:16px">
+          <div class="opt" style="flex:1;min-width:100%">
+            <label for="crop-size">Crop size <span id="crop-size-val" style="color:var(--text)">90%</span></label>
+            <input type="range" id="crop-size" min="10" max="100" value="90" style="width:100%">
+          </div>
+        </div>
+
+        <div class="row-inline" style="margin-top:6px">
+          <button class="btn sm" id="crop-center">Center</button>
+          <button class="btn sm" id="crop-reset">Reset</button>
+          <span class="status" id="crop-info" style="margin-left:auto"></span>
+        </div>
+
+        <div class="row-inline" style="margin-top:12px">
+          <button class="btn primary" id="crop-export">Download square JPG</button>
+          <button class="btn ghost sm" id="crop-clear">Clear</button>
+        </div>
+
+        <div class="rules" style="margin-top:12px">
+          Drag the box to reposition, drag a corner or use the slider to resize. Output is a square JPG at the crop's
+          <b>native resolution</b> — no background removal, no color changes, just the crop.
+        </div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /tools-grid -->
 </main>
 
 <!-- Touch-up editor -->
@@ -591,7 +657,119 @@
     wireEditor();
   }
 
-  window.onAuthReady=function(){ loadSharedNav(); wire(); };
+  // ==========================================================================
+  // Square Crop tool (lifestyle) — crop only, no pixel edits
+  // ==========================================================================
+  function wireCrop(){
+    const dz=$('crop-drop'), fileInput=$('crop-file'), wrap=$('crop-stage-wrap'),
+          stage=$('crop-stage'), imgEl=$('crop-img'), sel=$('crop-sel'),
+          sizeR=$('crop-size'), sizeVal=$('crop-size-val'), info=$('crop-info');
+    const img=new Image();
+    let natW=0, natH=0, name='image';
+    let s={x:0,y:0,size:0};                 // selection in NATURAL px (square)
+    const maxSquare=()=>Math.min(natW,natH);
+    const minSquare=()=>Math.max(50,Math.round(maxSquare()*0.08));
+    const dispScale=()=>imgEl.getBoundingClientRect().width/natW || 1;
+
+    function clampAll(){
+      s.size=Math.max(minSquare(),Math.min(s.size,maxSquare()));
+      s.x=Math.max(0,Math.min(s.x,natW-s.size));
+      s.y=Math.max(0,Math.min(s.y,natH-s.size));
+    }
+    function draw(){
+      const k=dispScale();
+      sel.style.left =(s.x*k)+'px'; sel.style.top=(s.y*k)+'px';
+      sel.style.width=(s.size*k)+'px'; sel.style.height=(s.size*k)+'px';
+      const px=Math.round(s.size);
+      info.textContent=px+' × '+px+' px';
+      sizeVal.textContent=Math.round(s.size/maxSquare()*100)+'%';
+      sizeR.value=Math.round(s.size/maxSquare()*100);
+    }
+    function center(){ s.x=(natW-s.size)/2; s.y=(natH-s.size)/2; clampAll(); draw(); }
+    function reset(){ s.size=maxSquare()*0.9; center(); }
+
+    function load(file){
+      if(!file||!file.type.startsWith('image/')) return;
+      name=file.name.replace(/\.[^.]+$/,'');
+      const url=URL.createObjectURL(file);
+      img.onload=()=>{
+        natW=img.naturalWidth; natH=img.naturalHeight;
+        imgEl.src=url; wrap.style.display=''; dz.style.display='none';
+        requestAnimationFrame(()=>{ reset(); });
+      };
+      img.src=url;
+    }
+
+    // file pickers
+    dz.addEventListener('click',()=>fileInput.click());
+    fileInput.addEventListener('change',e=>{ if(e.target.files[0]) load(e.target.files[0]); });
+    ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('over');}));
+    ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('over');}));
+    dz.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) load(f); });
+
+    // slider
+    sizeR.addEventListener('input',()=>{
+      const cx=s.x+s.size/2, cy=s.y+s.size/2;
+      s.size=maxSquare()*(sizeR.value/100);
+      s.x=cx-s.size/2; s.y=cy-s.size/2; clampAll(); draw();
+    });
+    $('crop-center').addEventListener('click',center);
+    $('crop-reset').addEventListener('click',reset);
+    $('crop-clear').addEventListener('click',()=>{
+      wrap.style.display='none'; dz.style.display=''; fileInput.value=''; imgEl.removeAttribute('src'); natW=natH=0;
+    });
+
+    // drag + resize (pointer, natural-coord math)
+    let mode=null, hCorner=null, startX=0, startY=0, s0=null;
+    function onDown(e){
+      const handle=e.target.closest('.crop-handle');
+      mode=handle?'resize':'move'; hCorner=handle?handle.dataset.h:null;
+      startX=e.clientX; startY=e.clientY; s0={...s};
+      sel.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+    }
+    function onMove(e){
+      if(!mode) return;
+      const k=dispScale();
+      const dxN=(e.clientX-startX)/k, dyN=(e.clientY-startY)/k;
+      if(mode==='move'){
+        s.x=s0.x+dxN; s.y=s0.y+dyN; clampAll(); draw(); return;
+      }
+      // resize keeping square, opposite corner anchored
+      let d=0;
+      if(hCorner==='se') d=(dxN+dyN)/2;
+      else if(hCorner==='nw') d=-(dxN+dyN)/2;
+      else if(hCorner==='ne') d=(dxN-dyN)/2;
+      else if(hCorner==='sw') d=(-dxN+dyN)/2;
+      let ns=Math.max(minSquare(),Math.min(s0.size+d,maxSquare()));
+      let nx=s0.x, ny=s0.y;
+      if(hCorner==='nw'){ nx=s0.x+s0.size-ns; ny=s0.y+s0.size-ns; }
+      else if(hCorner==='ne'){ ny=s0.y+s0.size-ns; }
+      else if(hCorner==='sw'){ nx=s0.x+s0.size-ns; }
+      s.size=ns; s.x=nx; s.y=ny; clampAll(); draw();
+    }
+    function onUp(){ mode=null; hCorner=null; }
+    sel.addEventListener('pointerdown',onDown);
+    window.addEventListener('pointermove',onMove);
+    window.addEventListener('pointerup',onUp);
+    window.addEventListener('resize',()=>{ if(natW) draw(); });
+
+    // export — native-resolution square JPG
+    $('crop-export').addEventListener('click',()=>{
+      if(!natW) return;
+      const out=Math.round(s.size);
+      const c=document.createElement('canvas'); c.width=out; c.height=out;
+      const ctx=c.getContext('2d');
+      ctx.drawImage(img, Math.round(s.x), Math.round(s.y), out, out, 0, 0, out, out);
+      c.toBlob(b=>{
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(b); a.download=name+'_square.jpg';
+        document.body.appendChild(a); a.click(); a.remove();
+      },'image/jpeg',0.95);
+    });
+  }
+
+  window.onAuthReady=function(){ loadSharedNav(); wire(); wireCrop(); };
 </script>
 </body>
 </html>
