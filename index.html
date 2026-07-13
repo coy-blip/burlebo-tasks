@@ -3,2132 +3,511 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Burlebo — Product Launch Tracker</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<title>BURLEBO — Launch Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/auth.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root{
+    --paper:#f4f1e9; --card:#fffefa; --card-2:#faf7ee;
+    --ink:#23271f; --dim:#7b7666; --faint:#a49e8d; --line:#ddd7c7;
+    --olive:#4a6330; --olive-d:#374b22; --olive-soft:#eef1e2;
+    --kraft:#a9743a; --kraft-soft:#f6ecdd;
+    --live:#4a6330;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased;
+    line-height:1.5; min-height:100vh;
+  }
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,textarea{font-family:inherit}
+  .osw{font-family:'Oswald',sans-serif}
+  .hidden{display:none !important}
 
-  :root {
-    --bg: #F7F6F3;
-    --surface: #FFFFFF;
-    --surface2: #F0EEE9;
-    --border: #E4E1DA;
-    --border2: #D0CDCA;
-    --text: #1A1917;
-    --text2: #6B6860;
-    --text3: #9E9B96;
-    --coy: #1A56DB;
-    --coy-bg: #EFF4FF;
-    --coy-border: #C3D3F7;
-    --designer: #7E3AF2;
-    --designer-bg: #F5F0FF;
-    --designer-border: #D9C9F8;
-    --green: #057A55;
-    --green-bg: #F0FAF4;
-    --green-border: #BCF0DA;
-    --amber: #92400E;
-    --amber-bg: #FFFBEB;
-    --amber-border: #FDE68A;
-    --red: #9B1C1C;
-    --red-bg: #FDF2F2;
-    --radius: 10px;
-    --radius-sm: 6px;
+  /* ---- header ---- */
+  .head{
+    background:var(--olive); color:#f4f1e9;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 26px;
   }
+  .brand{display:flex;align-items:center;gap:12px}
+  .wing{width:26px;height:26px;flex:0 0 auto}
+  .wm{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.24em;font-size:16px}
+  .wm .s{opacity:.72;font-weight:400;letter-spacing:.16em;margin-left:10px;font-size:13px}
+  .signout{font-size:13px;color:#f4f1e9;opacity:.8}
+  .signout:hover{opacity:1;text-decoration:underline}
 
-  body {
-    font-family: 'DM Sans', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    font-size: 14px;
+  /* ---- pipeline tabs ---- */
+  .pipe{
+    display:flex;align-items:stretch;gap:0;background:var(--card);
+    border-bottom:1px solid var(--line);padding:0 14px;overflow-x:auto;
   }
+  .tab{
+    display:flex;align-items:center;gap:10px;padding:16px 18px;position:relative;
+    color:var(--dim);white-space:nowrap;border-bottom:3px solid transparent;
+    transition:color .15s,border-color .15s;
+  }
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--olive);border-bottom-color:var(--olive)}
+  .tab .tnum{
+    font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;
+    width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+    background:var(--olive-soft);color:var(--olive);
+  }
+  .tab.active .tnum{background:var(--olive);color:#fff}
+  .tab .tlabel{font-family:'Oswald',sans-serif;font-weight:500;letter-spacing:.06em;font-size:15px;text-transform:uppercase}
+  .tab .tcount{
+    font-size:12px;font-weight:600;color:var(--faint);
+    background:var(--card-2);border:1px solid var(--line);border-radius:100px;padding:1px 8px;
+  }
+  .tab.active .tcount{color:var(--olive);border-color:var(--olive)}
+  .chev{display:grid;place-items:center;color:var(--faint);padding:0 2px}
+  .branch-sep{flex:0 0 auto;width:1px;background:var(--line);margin:12px 8px}
+  .tab.branch .tlabel{text-transform:uppercase}
+  .tab.branch.active{color:var(--kraft);border-bottom-color:var(--kraft)}
+  .tab.branch.active .tnum{background:var(--kraft)}
+  .tab.branch.active .tcount{color:var(--kraft);border-color:var(--kraft)}
 
-  /* HEADER */
-  .header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 32px;
-    height: 56px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
-  .header-logo {
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text);
-  }
-  .header-logo span { color: var(--text3); }
-  .header-right { display: flex; align-items: center; gap: 12px; }
-  .dashboard-link {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 10px;
-    background: var(--surface2);
-    border-radius: 6px;
-    color: var(--text);
-    text-decoration: none;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    transition: background 0.12s;
-  }
-  .dashboard-link:hover { background: var(--surface3, #2a2f38); color: var(--text); }
-  .sync-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--text3);
-  }
-  .sync-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    animation: pulse 2s infinite;
-  }
-  .sync-dot.syncing { background: var(--amber); animation: none; }
-  .sync-dot.error { background: var(--red-bg); animation: none; }
-  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+  .wrap{max-width:860px;margin:0 auto;padding:30px 22px 90px}
 
-  /* ROLE SWITCHER */
-  .role-switcher {
-    display: flex;
-    background: var(--surface2);
-    border-radius: 8px;
-    padding: 3px;
-    gap: 2px;
+  /* ---- list heading + add ---- */
+  .vhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:8px}
+  .vhead h2{font-family:'Oswald',sans-serif;font-weight:600;font-size:22px;letter-spacing:.02em;margin:0;text-transform:uppercase}
+  .vhead .hint{color:var(--dim);font-size:13.5px;margin:4px 0 0}
+  .addbtn{
+    background:var(--olive);color:#fff;border-radius:9px;padding:9px 15px;
+    font-weight:600;font-size:14px;flex:0 0 auto;transition:filter .15s;
   }
-  .role-btn {
-    padding: 5px 14px;
-    border-radius: 6px;
-    border: none;
-    background: transparent;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 400;
-    cursor: pointer;
-    color: var(--text2);
-    transition: all 0.15s;
-  }
-  .role-btn.active-coy { background: var(--coy-bg); color: var(--coy); font-weight: 500; }
-  .role-btn.active-designer { background: var(--designer-bg); color: var(--designer); font-weight: 500; }
+  .addbtn:hover{filter:brightness(1.08)}
+  .addbtn.ghost{background:transparent;color:var(--olive);border:1px solid var(--olive)}
 
-  /* Role pill — managed by auth.js, click to log out */
-  .role-pill {
-    display: inline-flex; align-items: center;
-    padding: 5px 12px;
-    border-radius: 999px;
-    font-size: 12px; font-weight: 600;
-    cursor: pointer;
-    background: var(--surface2); color: var(--text2);
-    border: 1px solid var(--border);
-    transition: opacity 0.15s;
+  /* ---- group cards ---- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:18px}
+  .gcard{
+    text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px;transition:border-color .15s,transform .1s;display:flex;flex-direction:column;gap:12px;
   }
-  .role-pill:hover { opacity: 0.82; }
-  .role-pill.coy      { background: var(--coy-bg);      color: var(--coy);      border-color: var(--coy-border); }
-  .role-pill.designer { background: var(--designer-bg); color: var(--designer); border-color: var(--designer-border); }
+  .gcard:hover{border-color:var(--olive);transform:translateY(-1px)}
+  .gcard .gname{font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;letter-spacing:.01em}
+  .gcard .gmeta{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--dim)}
+  .bar{height:6px;background:var(--card-2);border-radius:100px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:var(--olive);width:0}
+  .gcard .go{font-size:13px;color:var(--olive);font-weight:600}
 
-  /* APP BODY */
-  .app-body {
-    display: flex;
-    min-height: calc(100vh - 56px);
+  /* ---- detail ---- */
+  .back{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:14px;margin-bottom:14px}
+  .back:hover{color:var(--ink)}
+  .skulist{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+  .sku{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:15px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
   }
+  .sku .slabel{font-weight:600;font-size:15px;flex:1;min-width:170px}
+  .sku .slabel .code{color:var(--faint);font-weight:500;font-size:13px}
 
-  /* SIDEBAR */
-  .sidebar {
-    width: 220px;
-    flex-shrink: 0;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    padding: 20px 0;
-    position: sticky;
-    top: 56px;
-    height: calc(100vh - 56px);
-    overflow-y: auto;
+  .checks{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
+  .box{
+    width:22px;height:22px;border:2px solid var(--line);border-radius:6px;flex:0 0 auto;
+    display:grid;place-items:center;background:var(--card);transition:all .12s;
   }
-  .sidebar-section { margin-bottom: 24px; }
-  .sidebar-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text3);
-    padding: 0 16px 8px;
-  }
-  .sidebar-filter {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 7px 16px;
-    cursor: pointer;
-    border-radius: 0;
-    font-size: 13px;
-    color: var(--text2);
-    transition: all 0.12s;
-    border: none;
-    background: none;
-    width: 100%;
-    text-align: left;
-    font-family: 'DM Sans', sans-serif;
-    gap: 8px;
-  }
-  .sidebar-filter:hover { background: var(--surface2); color: var(--text); }
-  .sidebar-filter.active { background: var(--coy-bg); color: var(--coy); font-weight: 500; }
-  .sidebar-filter.active.pri-high { background: #FDF2F2; color: #9B1C1C; }
-  .sidebar-filter.active.pri-medium { background: #FFFBEB; color: #92400E; }
-  .sidebar-filter.active.pri-low { background: #F0FAF4; color: #057A55; }
-  .sidebar-filter-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sidebar-count {
-    font-size: 11px;
-    background: var(--surface2);
-    color: var(--text3);
-    padding: 1px 7px;
-    border-radius: 10px;
-    flex-shrink: 0;
-  }
-  .sidebar-group-row {
-    display: flex;
-    align-items: center;
-    position: relative;
-  }
-  .sidebar-group-row .sidebar-filter {
-    flex: 1;
-    padding-right: 8px;
-  }
-  .sidebar-dots {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 28px;
-    flex-shrink: 0;
-    cursor: pointer;
-    color: var(--text3);
-    font-size: 16px;
-    border-radius: 4px;
-    margin-right: 6px;
-    background: none;
-    border: none;
-    font-family: 'DM Sans', sans-serif;
-    line-height: 1;
-    letter-spacing: 1px;
-  }
-  .sidebar-group-row:hover .sidebar-dots { display: flex; }
-  .sidebar-dots:hover { background: var(--surface2); color: var(--red); }
-  .sidebar-menu {
-    position: absolute;
-    right: 6px;
-    top: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-    z-index: 50;
-    min-width: 160px;
-    overflow: hidden;
-  }
-  .sidebar-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 9px 14px;
-    font-size: 13px;
-    cursor: pointer;
-    color: var(--red);
-    border: none;
-    background: none;
-    width: 100%;
-    text-align: left;
-    font-family: 'DM Sans', sans-serif;
-  }
-  .sidebar-menu-item:hover { background: var(--red-bg); }
+  .chk:hover .box{border-color:var(--olive)}
+  .box svg{width:13px;height:13px;opacity:0;transform:scale(.6);transition:all .12s}
+  .chk[aria-checked="true"] .box{background:var(--olive);border-color:var(--olive)}
+  .chk[aria-checked="true"] .box svg{opacity:1;transform:scale(1)}
+  .chk .ctext{font-size:14px;color:var(--dim)}
+  .chk[aria-checked="true"] .ctext{color:var(--ink);font-weight:600}
 
-  /* MAIN */
-  .main { flex: 1; max-width: 860px; padding: 32px 28px; min-width: 0; }
+  .single-chk .ctext{font-size:14.5px}
 
-  .page-title {
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 4px;
+  .miniprog{font-size:12px;font-weight:700;color:var(--kraft);font-family:'Oswald',sans-serif;letter-spacing:.04em}
+  .livebadge{
+    font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--live);background:var(--olive-soft);border-radius:100px;padding:4px 12px;flex:0 0 auto;
   }
-  .page-sub {
-    font-size: 13px;
-    color: var(--text3);
-    margin-bottom: 28px;
-  }
+  .rowtools{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
+  .tbtn{color:var(--faint);border:1px solid transparent;border-radius:7px;padding:5px 9px;font-size:12px;font-weight:600}
+  .tbtn:hover{color:var(--ink);border-color:var(--line);background:var(--card-2)}
+  .tbtn.del:hover{color:#b5543f;border-color:#e3c3bc}
+  .tbtn.sell:hover{color:var(--olive);border-color:var(--olive)}
+  .tbtn.nogo:hover{color:var(--kraft);border-color:var(--kraft)}
+  .livebadge.nogo-badge{color:var(--kraft);background:var(--kraft-soft)}
+  .slabel .code{display:block;color:var(--faint);font-weight:500;font-size:12px;margin-top:2px;font-variant-numeric:tabular-nums}
 
-  /* STATS ROW */
-  .stats-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-bottom: 28px;
+  /* ---- add form ---- */
+  .form{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px;margin-top:16px;display:flex;flex-direction:column;gap:12px;
   }
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px 18px;
-  }
-  .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .stat-value { font-size: 24px; font-weight: 600; color: var(--text); line-height: 1; }
-  .stat-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .form label{font-size:13px;font-weight:600;color:var(--dim)}
+  .inp{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:11px 13px;font-size:14px;color:var(--ink);outline:none}
+  .inp:focus{border-color:var(--olive)}
+  textarea.inp{resize:vertical;min-height:92px;line-height:1.6}
+  .form .frow{display:flex;gap:10px;justify-content:flex-end}
+  .btn{background:var(--olive);color:#fff;border-radius:9px;padding:10px 18px;font-weight:600;font-size:14px}
+  .btn:hover{filter:brightness(1.08)}
+  .btn.sec{background:transparent;color:var(--dim);border:1px solid var(--line)}
+  .btn.sec:hover{color:var(--ink);filter:none}
 
-  /* ADD PRODUCT BAR */
-  .add-bar {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
-  .add-bar input {
-    flex: 1;
-    padding: 9px 14px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  .add-bar input:focus { border-color: var(--border2); }
-  .add-bar input::placeholder { color: var(--text3); }
-  .btn {
-    padding: 9px 18px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-  }
-  .btn:hover { background: var(--surface2); border-color: var(--border2); }
-  .btn-primary {
-    background: var(--text);
-    color: #fff;
-    border-color: var(--text);
-  }
-  .btn-primary:hover { opacity: 0.85; background: var(--text); }
+  .empty{text-align:center;color:var(--dim);padding:52px 20px;border:1px dashed var(--line);border-radius:var(--radius);margin-top:18px}
+  .empty p{margin:0 0 16px;font-size:14px}
 
-  /* SECTION */
-  .section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    margin-bottom: 16px;
-    overflow: hidden;
-  }
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    cursor: pointer;
-    user-select: none;
-    border-bottom: 1px solid var(--border);
-    transition: background 0.1s;
-  }
-  .section-header:hover { background: var(--surface2); }
-  .section-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
-  .section-right { display: flex; align-items: center; gap: 12px; }
-  .prog-wrap { display: flex; align-items: center; gap: 8px; }
-  .prog-bar { width: 72px; height: 3px; background: var(--border); border-radius: 2px; }
-  .prog-fill { height: 3px; border-radius: 2px; background: var(--green); transition: width 0.4s; }
-  .prog-text { font-size: 12px; color: var(--text3); min-width: 40px; text-align: right; }
-  .chevron { font-size: 16px; color: var(--text3); transition: transform 0.2s; display: inline-block; }
-  .chevron.open { transform: rotate(180deg); }
+  /* ---- login ---- */
+  .login{min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--olive)}
+  .lcard{width:100%;max-width:360px;background:var(--card);border-radius:16px;padding:40px 34px;text-align:center}
+  .lcard .wing{width:46px;height:46px;margin:0 auto 16px}
+  .lcard h1{font-family:'Oswald',sans-serif;font-size:19px;letter-spacing:.2em;margin:0 0 4px}
+  .lcard p{color:var(--dim);font-size:13px;margin:0 0 26px}
+  .lcard .inp{margin-bottom:12px;text-align:center}
+  .lerr{color:#b5543f;font-size:13px;min-height:18px;margin-top:12px}
 
-  /* PRODUCT ROW */
-  .product-row { border-bottom: 1px solid var(--border); }
-  .product-row:last-child { border-bottom: none; }
-  .product-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 11px 18px;
-    cursor: pointer;
-    transition: background 0.1s;
-  }
-  .product-header:hover { background: #FAFAF8; }
-  .product-name { font-size: 13px; font-weight: 500; color: var(--text); }
-  .product-right { display: flex; align-items: center; gap: 8px; }
+  .cfg{background:var(--kraft-soft);border:1px solid var(--kraft);border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:20px}
+  .cfg code{background:var(--card);padding:1px 6px;border-radius:5px;color:var(--kraft)}
 
-  .badge {
-    font-size: 11px;
-    font-weight: 500;
-    padding: 2px 9px;
-    border-radius: 20px;
-    white-space: nowrap;
-  }
-  .badge-complete { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
-  .badge-progress { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
-  .badge-pending { background: var(--surface2); color: var(--text3); border: 1px solid var(--border); }
+  .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#f4f1e9;padding:11px 20px;border-radius:100px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:all .2s;z-index:30}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-  /* TASK LIST */
-  .task-list { padding: 8px 18px 12px 36px; }
-  .task-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 5px 0;
+  @media (max-width:560px){
+    .head{padding:14px 16px}.wm .s{display:none}
+    .checks{width:100%;gap:12px}
+    .rowtools{margin-left:0}
   }
-  .task-check {
-    width: 15px; height: 15px;
-    border-radius: 4px;
-    border: 1.5px solid var(--border2);
-    appearance: none;
-    cursor: pointer;
-    flex-shrink: 0;
-    position: relative;
-    transition: all 0.15s;
-    background: var(--surface);
-  }
-  .task-check.owner-coy { border-color: var(--coy-border); }
-  .task-check.owner-coy:checked { background: var(--coy); border-color: var(--coy); }
-  .task-check.owner-designer { border-color: var(--designer-border); }
-  .task-check.owner-designer:checked { background: var(--designer); border-color: var(--designer); }
-  .task-check:checked::after {
-    content: '';
-    position: absolute;
-    left: 3px; top: 1px;
-    width: 5px; height: 8px;
-    border: 1.5px solid white;
-    border-top: none; border-left: none;
-    transform: rotate(45deg);
-  }
-  .task-check:disabled { opacity: 0.35; cursor: not-allowed; }
-  .task-check.owner-coy:not(:disabled):hover { border-color: var(--coy); }
-  .task-check.owner-designer:not(:disabled):hover { border-color: var(--designer); }
-
-  .task-label { font-size: 13px; color: var(--text); flex: 1; }
-  .task-label.done { text-decoration: line-through; color: var(--text3); }
-
-  .owner-pill {
-    font-size: 10px;
-    font-weight: 500;
-    padding: 1px 7px;
-    border-radius: 10px;
-    letter-spacing: 0.02em;
-  }
-  .owner-pill.coy { background: var(--coy-bg); color: var(--coy); }
-  .owner-pill.designer { background: var(--designer-bg); color: var(--designer); }
-
-  .existing-tag {
-    font-size: 10px;
-    color: var(--text3);
-    font-style: italic;
-  }
-
-  /* DELETE BTN */
-  .delete-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text3);
-    font-size: 16px;
-    padding: 2px 4px;
-    border-radius: 4px;
-    line-height: 1;
-    transition: all 0.15s;
-    opacity: 0;
-  }
-  .product-header:hover .delete-btn { opacity: 1; }
-  .delete-btn:hover { color: var(--red); background: var(--red-bg); }
-
-  /* PRODUCT GROUPS */
-  .product-group { }
-  .group-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--text3);
-    padding: 10px 18px 8px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .product-group:first-child .group-label { border-top: none; }
-  .group-body {
-    display: flex;
-    gap: 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .group-assets {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 18px;
-    background: var(--surface2);
-    flex: 1;
-    border-right: 1px solid var(--border);
-  }
-  .group-notes {
-    width: 220px;
-    flex-shrink: 0;
-    padding: 10px 14px;
-    background: var(--surface2);
-  }
-  .notes-input {
-    width: 100%;
-    min-height: 72px;
-    padding: 7px 9px;
-    font-size: 12px;
-    font-family: 'DM Sans', sans-serif;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    resize: vertical;
-    outline: none;
-    line-height: 1.5;
-  }
-  .notes-input:focus { border-color: var(--border2); }
-  .group-asset-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 200px;
-  }
-  .asset-label {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text3);
-    white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .asset-value {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex: 1;
-  }
-  .asset-link {
-    font-size: 12px;
-    color: var(--coy);
-    text-decoration: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 180px;
-  }
-  .asset-link:hover { text-decoration: underline; }
-  .asset-input {
-    flex: 1;
-    padding: 5px 8px;
-    font-size: 12px;
-    font-family: 'DM Sans', sans-serif;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-    outline: none;
-    min-width: 0;
-  }
-  .asset-input:focus { border-color: var(--border2); }
-  .asset-btn {
-    padding: 4px 10px;
-    font-size: 11px;
-    font-family: 'DM Sans', sans-serif;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border);
-    background: var(--surface);
-    cursor: pointer;
-    color: var(--text2);
-    white-space: nowrap;
-  }
-  .asset-btn:hover { background: var(--surface2); }
-  .asset-clear {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text3);
-    font-size: 14px;
-    padding: 0 2px;
-    line-height: 1;
-  }
-  .asset-clear:hover { color: var(--red); }
-  .asset-uploading { font-size: 11px; color: var(--text3); font-style: italic; }
-
-  /* EMPTY */
-  .empty { padding: 28px 18px; text-align: center; color: var(--text3); font-size: 13px; }
-
-  /* LOADING */
-  .loading-screen {
-    position: fixed; inset: 0;
-    background: var(--bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 12px;
-    z-index: 999;
-  }
-  .loading-logo {
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text3);
-  }
-  .loading-spinner {
-    width: 20px; height: 20px;
-    border: 2px solid var(--border);
-    border-top-color: var(--text);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* TABS */
-  .tab-nav {
-    display: flex;
-    gap: 2px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
-  }
-  .tab-btn {
-    padding: 8px 18px;
-    font-size: 13px;
-    font-weight: 500;
-    font-family: 'DM Sans', sans-serif;
-    border: none;
-    background: none;
-    cursor: pointer;
-    color: var(--text3);
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all 0.15s;
-  }
-  .tab-btn:hover { color: var(--text); }
-  .tab-btn.active { color: var(--text); border-bottom-color: var(--text); }
-  .feed-badge { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 4px; margin-left:6px; border-radius:8px; background:#9B1C1C; color:#fff; font-size:10px; font-weight:600; line-height:1; }
-  .feed-list { display:flex; flex-direction:column; gap:8px; max-width:760px; }
-  .feed-day { font-size:12px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.04em; margin:14px 0 2px; }
-  .feed-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--surface); }
-  .feed-item.feed-new { border-color:var(--coy-border); background:var(--coy-bg); }
-  .feed-item-main { font-size:13px; color:var(--text); margin-bottom:4px; }
-  .feed-who { font-weight:600; }
-  .feed-group { font-weight:600; color:var(--coy); }
-  .feed-newdot { font-size:9px; font-weight:700; color:#fff; background:#9B1C1C; border-radius:4px; padding:1px 5px; margin-left:4px; vertical-align:middle; }
-  .feed-link { font-size:12px; color:var(--designer); word-break:break-all; text-decoration:none; }
-  .feed-link:hover { text-decoration:underline; }
-  .feed-time { font-size:11px; color:var(--text3); margin-top:3px; }
-
-  /* COPYWRITING TAB */
-  .cw-group {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    margin-bottom: 12px;
-    overflow: hidden;
-  }
-  .cw-group-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-  }
-  .cw-group-name { font-size: 14px; font-weight: 600; color: var(--text); }
-  .cw-group-meta { font-size: 12px; color: var(--text3); margin-top: 2px; }
-  .cw-group-right { display: flex; align-items: center; gap: 10px; }
-  .import-modal {
-    position: fixed; inset: 0;
-    background: rgba(26,25,23,0.5);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 300;
-  }
-  .import-box {
-    background: var(--surface);
-    border-radius: 14px;
-    padding: 28px;
-    width: 480px;
-    max-height: 80vh;
-    overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-  }
-  .import-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-  .import-sub { font-size: 13px; color: var(--text3); margin-bottom: 20px; }
-  .import-preview { margin-bottom: 20px; }
-  .import-sheet { margin-bottom: 16px; }
-  .import-sheet-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 8px; }
-  .import-product-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 7px 10px;
-    border-radius: var(--radius-sm);
-    margin-bottom: 4px;
-    font-size: 13px;
-  }
-  .import-product-name { color: var(--text); flex: 1; }
-  .import-product-status { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; }
-  .status-complete { background: var(--green-bg); color: var(--green); }
-  .status-coy { background: #FFF3E0; color: #E65100; }
-  .status-designer { background: var(--designer-bg); color: var(--designer); }
-  .status-mixed { background: var(--surface2); color: var(--text2); }
-  .import-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .import-count { font-size: 13px; color: var(--text3); padding: 8px 0; border-top: 1px solid var(--border); margin-top: 8px; }
-  .import-duplicate { opacity: 0.5; }
-  .dup-tag { font-size: 10px; color: var(--text3); margin-left: 6px; }
-
-  .modal-overlay {
-    position: fixed; inset: 0;
-    background: rgba(26,25,23,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 200;
-  }
-  .modal {
-    background: var(--surface);
-    border-radius: 14px;
-    padding: 32px;
-    width: 360px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-  }
-  .modal-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
-  .modal-sub { font-size: 13px; color: var(--text3); margin-bottom: 24px; }
-  .modal-options { display: flex; flex-direction: column; gap: 10px; }
-  .modal-option {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
-    border: 1.5px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    transition: all 0.15s;
-    background: transparent;
-    font-family: 'DM Sans', sans-serif;
-    text-align: left;
-    width: 100%;
-  }
-  .modal-option:hover { border-color: var(--border2); background: var(--surface2); }
-  .modal-option.opt-coy:hover { border-color: var(--coy-border); background: var(--coy-bg); }
-  .modal-option.opt-designer:hover { border-color: var(--designer-border); background: var(--designer-bg); }
-  .modal-option-icon {
-    width: 36px; height: 36px;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
-  }
-  .modal-option-icon.coy { background: var(--coy-bg); color: var(--coy); }
-  .modal-option-icon.designer { background: var(--designer-bg); color: var(--designer); }
-  .modal-option-name { font-size: 14px; font-weight: 500; }
-  .modal-option-desc { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
 </style>
 </head>
 <body>
 
-<div class="loading-screen" id="loading">
-  <div class="loading-logo">Burlebo</div>
-  <div class="loading-spinner"></div>
-</div>
-
-<div id="app" style="display:none;">
-  <header class="header">
-    <div class="header-logo">Burlebo <span>/</span> Launch Tracker</div>
-    <div class="header-right">
-      <a href="/snapshot.html" class="dashboard-link" title="Burlebo Analytics Dashboard">📊 Dashboard</a>
-      <div class="sync-indicator">
-        <div class="sync-dot" id="sync-dot"></div>
-        <span id="sync-text">Synced</span>
-      </div>
-      <span class="role-pill" id="role-pill" title="Click to switch role"></span>
-    </div>
-  </header>
-
-  <div class="app-body">
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-section">
-        <div class="sidebar-label">Priority</div>
-        <div id="priority-filters"></div>
-      </div>
-      <div class="sidebar-section">
-        <div class="sidebar-label">Product Group</div>
-        <div id="group-filters"></div>
-      </div>
-    </aside>
-
-    <main class="main">
-      <div class="page-title">Product launch tracker</div>
-      <div class="page-sub" id="page-sub">Select a product group from the left to get started.</div>
-
-      <div id="tab-nav" style="display:none;" class="tab-nav">
-        <button class="tab-btn active" id="tab-tracker" onclick="switchTab('tracker')">Tracker</button>
-        <button class="tab-btn" id="tab-copywriting" onclick="switchTab('copywriting')">📄 Copywriting Docs</button>
-        <button class="tab-btn" id="tab-ready" onclick="switchTab('ready')">✅ Ready for Designer</button>
-        <button class="tab-btn" id="tab-feed" onclick="switchTab('feed')" style="display:none;">📥 Designer Feed<span id="feed-badge" class="feed-badge" style="display:none;"></span></button>
-      </div>
-
-      <div id="tab-tracker-content">
-        <div class="stats-row" id="stats-row"></div>
-        <div class="add-bar" id="add-bar" style="display:none;">
-          <input type="text" id="new-product-input" placeholder="Add product — e.g. Go To Tee, olive colorway" />
-          <button class="btn btn-primary" onclick="addProduct()">+ Add product</button>
-          <button class="btn" onclick="document.getElementById('xlsx-upload').click()">&#8593; Import Excel</button>
-          <input type="file" id="xlsx-upload" accept=".xlsx" style="display:none;" onchange="handleExcelUpload(event)" />
-        </div>
-        <div id="sections-container"></div>
-      </div>
-
-      <div id="tab-copywriting-content" style="display:none;">
-        <div id="copywriting-container"></div>
-      </div>
-
-      <div id="tab-ready-content" style="display:none;">
-        <div id="ready-container"></div>
-      </div>
-
-      <div id="tab-feed-content" style="display:none;">
-        <div id="feed-container"></div>
-      </div>
-    </main>
+<!-- ===== LOGIN ===== -->
+<div id="login" class="login">
+  <div class="lcard">
+    <svg class="wing" viewBox="0 0 100 100"><path d="M50 20 C40 40 20 46 8 48 C24 52 40 58 50 80 C60 58 76 52 92 48 C80 46 60 40 50 20 Z" fill="#4a6330"/></svg>
+    <h1>BURLEBO</h1>
+    <p>Launch Pipeline</p>
+    <input id="pw" class="inp" type="password" placeholder="Password" />
+    <button class="btn" style="width:100%" onclick="doLogin()">Sign in</button>
+    <div id="lerr" class="lerr"></div>
   </div>
 </div>
 
-<script>
-const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<!-- ===== APP ===== -->
+<div id="app" class="hidden">
+  <div class="head">
+    <div class="brand">
+      <svg class="wing" viewBox="0 0 100 100"><path d="M50 20 C40 40 20 46 8 48 C24 52 40 58 50 80 C60 58 76 52 92 48 C80 46 60 40 50 20 Z" fill="#f4f1e9"/></svg>
+      <div class="wm">BURLEBO<span class="s">LAUNCH PIPELINE</span></div>
+    </div>
+    <button class="signout" onclick="signOut()">Sign out</button>
+  </div>
 
-const SECTIONS = [
-  {
-    id: 'upload',
-    title: 'New product uploading',
-    tasks: [
-      { id: 'flat_file', label: 'Add to flat file', owner: 'coy' },
-      { id: 'amazon_inv', label: 'Add to Amazon inventory', owner: 'coy' },
-      { id: 'images', label: 'Add images', owner: 'coy' },
-      { id: 'activate', label: 'Activate product', owner: 'coy' },
-      { id: 'blb_sync', label: 'Sync to BLB inventory', owner: 'coy' },
-      { id: 'aplus_connect', label: 'Connect A+ content', owner: 'coy' },
-    ]
-  },
-  {
-    id: 'content',
-    title: 'Designer / content',
-    tasks: [
-      { id: 'copy_guide', label: 'Copywriting guide', owner: 'coy' },
-      { id: 'aplus', label: 'A+ content for product category', owner: 'designer' },
-      { id: 'pdp_images', label: 'PDP images for all SKUs', owner: 'designer' },
-    ]
-  }
+  <div class="pipe" id="pipe"></div>
+
+  <div class="wrap">
+    <div id="cfg" class="cfg hidden">Backend not connected — paste your Supabase <code>anon key</code> into the <code>CONFIG</code> block at the top of this file, then commit.</div>
+    <div id="view"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============================================================
+   CONFIG — the only thing to edit before committing
+   ============================================================ */
+const CONFIG = {
+  SUPABASE_URL: "https://uoetojuyzyngfopsmmxk.supabase.co",
+  SUPABASE_ANON_KEY: "PASTE_ANON_KEY_HERE",   // copy from your old index.html (next to createClient)
+  PASSWORD: "Burlebo49!",                       // change to whatever you want
+  TABLE: "launch_skus"
+};
+/* ============================================================ */
+
+const STAGES = [
+  { key:"groups",  label:"Product Groups",         hint:"Click a group to see its SKUs. Check a SKU once it's added to Amazon with images and closed — it moves to the next stage." },
+  { key:"closed",  label:"Closed — Ready",         hint:"Sync A+, sync inventory, and launch. When all three are checked, the SKU moves to Currently Selling." },
+  { key:"selling", label:"Currently Selling",      hint:"Live on Amazon." }
+];
+const BRANCH = { key:"blb_only", label:"BURLEBO Selling · Amazon Not", hint:"Selling on burlebo.com but intentionally not listed on Amazon." };
+const stageDef = k => STAGES.concat([BRANCH]).find(s=>s.key===k);
+
+const FIELDS = [
+  { key:"aplus_synced",     label:"A+ Content Synced" },
+  { key:"inventory_synced", label:"Inventory Synced" },
+  { key:"launched_live",    label:"Launched and Live" }
 ];
 
-let role = null;
-let taskState = {};
-let products = [];
-let collapsed = {};
-let productCollapsed = {};
-let saving = false;
-let activityFeed = []; // [{ ts, group, idx, url, role, action }] — designer upload log
+let sb=null, skus=[], authed=false;
+let state = { tab:"groups", group:null, addingGroup:false };
 
-async function loadData() {
-  const { data, error } = await sb.from('tasks').select('id, data');
-  if (error) { setSyncStatus('error', 'Connection error'); return; }
-  for (const row of data) {
-    if (row.id === 'state') taskState = row.data || {};
-    if (row.id === 'products') products = row.data || [];
-    if (row.id === 'activity_feed') activityFeed = row.data || [];
-  }
+const $ = id => document.getElementById(id);
+const configOK = () => CONFIG.SUPABASE_ANON_KEY && CONFIG.SUPABASE_ANON_KEY !== "PASTE_ANON_KEY_HERE";
+if (configOK()) sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
+const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+/* ---- auth ---- */
+function doLogin(){
+  if ($("pw").value === CONFIG.PASSWORD){ authed=true; $("login").classList.add("hidden"); $("app").classList.remove("hidden"); boot(); }
+  else $("lerr").textContent = "That password didn't match.";
+}
+$("pw").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+function signOut(){ authed=false; skus=[]; $("pw").value=""; $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
+
+function boot(){
+  if (!configOK()){ $("cfg").classList.remove("hidden"); renderPipe(); return; }
+  loadSkus();
+  sb.channel("pipe").on("postgres_changes",{event:"*",schema:"public",table:CONFIG.TABLE}, loadSkus).subscribe();
 }
 
-async function saveState() {
-  setSyncStatus('syncing', 'Saving...');
-  const { error } = await sb.from('tasks').update({ data: taskState }).eq('id', 'state');
-  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
-}
-
-async function saveProducts() {
-  setSyncStatus('syncing', 'Saving...');
-  const { error } = await sb.from('tasks').update({ data: products }).eq('id', 'products');
-  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
-}
-
-function setSyncStatus(status, text) {
-  const dot = document.getElementById('sync-dot');
-  const txt = document.getElementById('sync-text');
-  if (!dot || !txt) return;
-  dot.className = 'sync-dot' + (status === 'syncing' ? ' syncing' : status === 'error' ? ' error' : '');
-  txt.textContent = text;
-}
-
-function getTaskDone(productId, sectionId, taskId) {
-  const p = products.find(x => x.id === productId);
-  if (p?.overrides?.[sectionId]?.[taskId]) return true;
-  return taskState[productId]?.[sectionId]?.[taskId] || false;
-}
-
-function isOverride(productId, sectionId, taskId) {
-  const p = products.find(x => x.id === productId);
-  return !!(p?.overrides?.[sectionId]?.[taskId]);
-}
-
-async function setTask(productId, sectionId, taskId, val) {
-  if (!taskState[productId]) taskState[productId] = {};
-  if (!taskState[productId][sectionId]) taskState[productId][sectionId] = {};
-  taskState[productId][sectionId][taskId] = val;
-  render();
-  await saveState();
-}
-
-async function addProduct() {
-  const input = document.getElementById('new-product-input');
-  const name = input.value.trim();
-  if (!name) return;
-  const id = 'p-' + Date.now();
-  products.push({ id, name, overrides: {} });
-  input.value = '';
-  render();
-  await saveProducts();
-}
-
-async function deleteProduct(id) {
-  if (!confirm('Remove this product?')) return;
-  products = products.filter(p => p.id !== id);
-  render();
-  await saveProducts();
-}
-
-function promptCoyPassword() {
-  // Legacy entry point — no longer used; auth.js handles role selection.
-}
-
-function checkCoyPassword() {
-  // Legacy entry point — no longer used; auth.js handles role selection.
-}
-
-function selectRole(r) {
-  // Legacy entry point retained as a safety net; auth.js drives role state.
-  role = r;
-  document.getElementById('add-bar').style.display = role === 'coy' ? 'flex' : 'none';
+/* ---- data ---- */
+async function loadSkus(){
+  const { data, error } = await sb.from(CONFIG.TABLE).select("*").order("sort_order",{ascending:true});
+  if (error){ toast("Couldn't load"); console.error(error); return; }
+  skus = data || [];
   render();
 }
-
-function switchRole(r) {
-  // Old in-tracker role switcher. Auth.js now handles role changes via the
-  // role pill (click → logout → re-pick). Keep as no-op for safety.
-  if (window.AuthApp) window.AuthApp.logout();
+async function patch(id, fields){
+  fields.updated_at = new Date().toISOString();
+  const { error } = await sb.from(CONFIG.TABLE).update(fields).eq("id", id);
+  if (error){ toast("Update failed"); console.error(error); }
+}
+async function addSkus(group, names){
+  const base = skus.length ? Math.max(...skus.map(s=>s.sort_order||0))+1 : 0;
+  const rows = names.map((sku,i)=>({ group_name:group, sku, stage:"groups", sort_order:base+i,
+    added_closed:false, aplus_synced:false, inventory_synced:false, launched_live:false }));
+  const { error } = await sb.from(CONFIG.TABLE).insert(rows);
+  if (error){ toast("Add failed"); console.error(error); return; }
+  toast(rows.length>1 ? `${rows.length} SKUs added` : "SKU added");
+}
+async function delSku(id){ const {error}=await sb.from(CONFIG.TABLE).delete().eq("id",id); if(!error) toast("SKU removed"); }
+async function delGroup(group,stage){
+  if(!confirm(`Remove all "${group}" SKUs in this stage?`)) return;
+  const ids = skus.filter(s=>s.group_name===group && s.stage===stage).map(s=>s.id);
+  const {error}=await sb.from(CONFIG.TABLE).delete().in("id",ids);
+  if(!error){ toast("Group removed"); state.group=null; }
 }
 
-function updateRoleUI() {
-  // No-op — the old role-switcher buttons are gone, replaced by the role pill
-  // which auth.js styles on completeAuth().
+/* ---- movement ---- */
+function moveClosed(id){ patch(id,{ added_closed:true, stage:"closed" }); toast("Moved to Closed — Ready"); }
+function moveSelling(id){ patch(id,{ stage:"selling", added_closed:true, aplus_synced:true, inventory_synced:true, launched_live:true }); toast("Moved to Currently Selling"); }
+function moveBlb(id){ patch(id,{ stage:"blb_only" }); toast("Parked in BURLEBO Selling · Amazon Not"); }
+async function renameGroup(oldName){
+  const nn = prompt("Rename product group (matching names merge together):", oldName);
+  if (nn===null) return;
+  const name = nn.trim();
+  if (!name || name===oldName) return;
+  const ids = skus.filter(s=>s.group_name===oldName).map(s=>s.id);
+  const { error } = await sb.from(CONFIG.TABLE).update({ group_name:name }).in("id", ids);
+  if (error){ toast("Rename failed"); console.error(error); return; }
+  state.group = name; toast("Group renamed");
+}
+function toggleField(s, field){
+  const next = !s[field];
+  const flags = { aplus_synced:s.aplus_synced, inventory_synced:s.inventory_synced, launched_live:s.launched_live };
+  flags[field] = next;
+  const all = flags.aplus_synced && flags.inventory_synced && flags.launched_live;
+  const fields = { [field]: next };
+  if (all){ fields.stage="selling"; toast("Now Currently Selling"); }
+  patch(s.id, fields);
+}
+function revert(id, to){
+  if (to==="groups") patch(id,{ stage:"groups", added_closed:false, aplus_synced:false, inventory_synced:false, launched_live:false });
+  else patch(id,{ stage:"closed", launched_live:false });
+  toast("Moved back");
 }
 
-function sectionProgress(sectionId) {
-  const section = SECTIONS.find(s => s.id === sectionId);
-  let done = 0, total = 0;
-  for (const p of products) {
-    for (const t of section.tasks) {
-      total++;
-      if (getTaskDone(p.id, sectionId, t.id)) done++;
-    }
-  }
-  return { done, total };
-}
-
-function productStatus(productId, sectionId) {
-  const section = SECTIONS.find(s => s.id === sectionId);
-  const done = section.tasks.filter(t => getTaskDone(productId, sectionId, t.id)).length;
-  if (done === section.tasks.length) return 'complete';
-  if (done > 0) return 'progress';
-  return 'pending';
-}
-
-function totalStats() {
-  const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
-  let totalTasks = 0, doneTasks = 0;
-  for (const s of visibleSections) {
-    for (const p of products) {
-      for (const t of s.tasks) {
-        totalTasks++;
-        if (getTaskDone(p.id, s.id, t.id)) doneTasks++;
-      }
-    }
-  }
-  const complete = products.filter(p => visibleSections.every(s => productStatus(p.id, s.id) === 'complete')).length;
-  return { totalTasks, doneTasks, complete, total: products.length };
-}
-
-let currentTab = 'tracker';
-
-function switchTab(tab) {
-  currentTab = tab;
-  document.getElementById('tab-tracker').className = 'tab-btn' + (tab === 'tracker' ? ' active' : '');
-  document.getElementById('tab-copywriting').className = 'tab-btn' + (tab === 'copywriting' ? ' active' : '');
-  document.getElementById('tab-ready').className = 'tab-btn' + (tab === 'ready' ? ' active' : '');
-  const feedBtn = document.getElementById('tab-feed');
-  if (feedBtn) feedBtn.className = 'tab-btn' + (tab === 'feed' ? ' active' : '');
-  document.getElementById('tab-tracker-content').style.display = tab === 'tracker' ? 'block' : 'none';
-  document.getElementById('tab-copywriting-content').style.display = tab === 'copywriting' ? 'block' : 'none';
-  document.getElementById('tab-ready-content').style.display = tab === 'ready' ? 'block' : 'none';
-  const feedContent = document.getElementById('tab-feed-content');
-  if (feedContent) feedContent.style.display = tab === 'feed' ? 'block' : 'none';
-  if (tab === 'copywriting') renderCopywritingTab();
-  if (tab === 'ready') renderReadyTab();
-  if (tab === 'feed') { markFeedSeen(); renderFeedTab(); }
-  updatePageSub();
-  updateFeedBadge();
-}
-
-function renderReadyTab() {
-  const container = document.getElementById('ready-container');
-  if (!container) return;
-
-  // Get all unique groups
-  const allGroups = {};
-  for (const p of products) {
-    const g = getProductGroup(p.name);
-    if (!allGroups[g]) allGroups[g] = [];
-    allGroups[g].push(p);
-  }
-
-  // A group is "ready for designer" if:
-  // 1. Copywriting doc is uploaded
-  // 2. At least one product still needs A+ or PDP images
-  const readyGroups = [];
-  const notReadyGroups = [];
-  const doneGroups = [];
-
-  for (const [g, prods] of Object.entries(allGroups)) {
-    const hasDoc = !!groupAssets[g]?.docUrl;
-    if (!hasDoc) { notReadyGroups.push([g, prods]); continue; }
-
-    const needsWork = prods.some(p =>
-      !getTaskDone(p.id, 'content', 'aplus') || !getTaskDone(p.id, 'content', 'pdp_images')
-    );
-
-    if (needsWork) readyGroups.push([g, prods]);
-    else doneGroups.push([g, prods]);
-  }
-
-  readyGroups.sort((a,b) => a[0].localeCompare(b[0]));
-  doneGroups.sort((a,b) => a[0].localeCompare(b[0]));
-
-  let html = '';
-
-  if (readyGroups.length === 0) {
-    html += `<div style="padding:40px;text-align:center;color:var(--text3);font-size:14px;">No product groups are ready for designer work yet.</div>`;
-  } else {
-    html += `<div style="font-size:13px;color:var(--text3);margin-bottom:16px;">${readyGroups.length} group${readyGroups.length !== 1 ? 's' : ''} ready for your work</div>`;
-
-    for (const [g, prods] of readyGroups) {
-      const doc = groupAssets[g];
-      const dropboxLinks = groupAssets[g]?.dropboxLinks || [];
-      const needsAplus = prods.filter(p => !getTaskDone(p.id, 'content', 'aplus')).length;
-      const needsPdp = prods.filter(p => !getTaskDone(p.id, 'content', 'pdp_images')).length;
-      const pri = prods[0]?.priority;
-      const priStyle = pri ? `font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px;color:${PRIORITIES[pri].color};background:${PRIORITIES[pri].bg};` : '';
-
-      html += `<div class="cw-group">
-        <div class="cw-group-header">
-          <div style="flex:1;">
-            <div class="cw-group-name" style="display:flex;align-items:center;gap:8px;">
-              ${g} ${pri ? `<span style="${priStyle}">${PRIORITIES[pri].label}</span>` : ''}
-            </div>
-            <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
-              ${needsAplus > 0
-                ? `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--amber);">
-                     ⏳ <strong>A+ content needed</strong> — ${needsAplus} product${needsAplus!==1?'s':''}
-                   </div>`
-                : `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--green);">
-                     ✅ A+ content complete
-                   </div>`}
-              ${needsPdp > 0
-                ? `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--amber);">
-                     ⏳ <strong>PDP images needed</strong> — ${needsPdp} product${needsPdp!==1?'s':''}
-                   </div>`
-                : `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--green);">
-                     ✅ PDP images complete
-                   </div>`}
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;margin-left:16px;">
-            <a class="asset-link" href="${doc.docUrl}" target="_blank" style="font-size:13px;white-space:nowrap;">📎 Copywriting doc</a>
-            ${dropboxLinks.filter(l=>l).map((l,i) => `<a class="asset-link" href="${l}" target="_blank" style="font-size:12px;white-space:nowrap;">🔗 Dropbox link ${i+1}</a>`).join('')}
-          </div>
-        </div>
-      </div>`;
-    }
-  }
-
-  if (doneGroups.length > 0) {
-    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin:24px 0 10px;">All done (${doneGroups.length})</div>`;
-    for (const [g] of doneGroups) {
-      html += `<div class="cw-group" style="opacity:0.6;">
-        <div class="cw-group-header">
-          <div class="cw-group-name">${g}</div>
-          <span style="font-size:12px;color:var(--green);">✅ A+ &amp; PDP complete</span>
-        </div>
-      </div>`;
-    }
-  }
-
-  if (notReadyGroups.length > 0) {
-    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin:24px 0 10px;">Waiting on copywriting doc (${notReadyGroups.length})</div>`;
-    for (const [g] of notReadyGroups) {
-      html += `<div class="cw-group" style="opacity:0.5;">
-        <div class="cw-group-header">
-          <div class="cw-group-name">${g}</div>
-          <span style="font-size:12px;color:var(--text3);">⏳ No copywriting doc yet</span>
-        </div>
-      </div>`;
-    }
-  }
-
-  container.innerHTML = html;
-}
-
-function renderCopywritingTab() {
-  const container = document.getElementById('copywriting-container');
-  if (!container) return;
-
-  // Get all unique groups that are missing a copywriting doc
-  const allGroups = {};
-  for (const p of products) {
-    const g = getProductGroup(p.name);
-    if (!allGroups[g]) allGroups[g] = 0;
-    allGroups[g]++;
-  }
-
-  const missingGroups = Object.entries(allGroups)
-    .filter(([g]) => !groupAssets[g]?.docUrl)
-    .sort((a,b) => a[0].localeCompare(b[0]));
-
-  const doneGroups = Object.entries(allGroups)
-    .filter(([g]) => groupAssets[g]?.docUrl)
-    .sort((a,b) => a[0].localeCompare(b[0]));
-
-  let html = '';
-
-  if (missingGroups.length === 0) {
-    html += `<div style="padding:40px;text-align:center;color:var(--green);font-size:14px;font-weight:500;">✅ All product groups have copywriting docs uploaded!</div>`;
-  } else {
-    html += `<div style="font-size:13px;color:var(--text3);margin-bottom:16px;">${missingGroups.length} group${missingGroups.length !== 1 ? 's' : ''} missing a copywriting doc</div>`;
-    for (const [g, count] of missingGroups) {
-      const safeG = g.replace(/"/g, '&quot;');
-      const gkey = 'cw-' + encodeURIComponent(g);
-      html += `<div class="cw-group">
-        <div class="cw-group-header">
-          <div>
-            <div class="cw-group-name">${g}</div>
-            <div class="cw-group-meta">${count} product${count !== 1 ? 's' : ''}</div>
-          </div>
-          <div class="cw-group-right">
-            <span id="cw-status-${gkey}" class="asset-uploading" style="display:none;">Uploading...</span>
-            <input type="file" id="cw-input-${gkey}" data-group="${safeG}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc(this.dataset.group, this)" />
-            <button class="btn btn-primary" onclick="document.getElementById('cw-input-${gkey}').click()">+ Upload copywriting doc</button>
-          </div>
-        </div>
-      </div>`;
-    }
-  }
-
-  if (doneGroups.length > 0) {
-    html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin:24px 0 10px;">Completed (${doneGroups.length})</div>`;
-    for (const [g] of doneGroups) {
-      const doc = groupAssets[g];
-      const safeG = g.replace(/"/g, '&quot;');
-      html += `<div class="cw-group" style="opacity:0.7;">
-        <div class="cw-group-header">
-          <div>
-            <div class="cw-group-name">${g}</div>
-            <div class="cw-group-meta">✅ ${doc.docName}</div>
-          </div>
-          <div class="cw-group-right">
-            <a class="asset-link" href="${doc.docUrl}" target="_blank">📎 View doc</a>
-            <button class="asset-clear" data-group="${safeG}" onclick="clearGroupDoc(this.dataset.group)" title="Remove">✕</button>
-          </div>
-        </div>
-      </div>`;
-    }
-  }
-
-  container.innerHTML = html;
-}
-
-function render() {
-  const tabNav = document.getElementById('tab-nav');
-  if (tabNav) tabNav.style.display = 'flex';
-
-  // Copywriting tab only for Coy
-  const cwBtn = document.getElementById('tab-copywriting');
-  if (cwBtn) cwBtn.style.display = role === 'coy' ? 'inline-block' : 'none';
-
-  // Ready for Designer tab visible to both roles
-  const rdBtn = document.getElementById('tab-ready');
-  if (rdBtn) rdBtn.style.display = 'inline-block';
-
-  // Designer Feed tab only for Coy
-  const feedBtn = document.getElementById('tab-feed');
-  if (feedBtn) feedBtn.style.display = role === 'coy' ? 'inline-block' : 'none';
-
-  // If role switched away from a tab they can't see, reset to tracker
-  if (role !== 'coy' && currentTab === 'copywriting') switchTab('tracker');
-  if (role !== 'coy' && currentTab === 'feed') switchTab('tracker');
-
-  renderSidebar();
-  renderStats();
-  renderSections();
-  if (currentTab === 'copywriting') renderCopywritingTab();
-  if (currentTab === 'ready') renderReadyTab();
-  if (currentTab === 'feed') renderFeedTab();
-
-  updatePageSub();
-  updateFeedBadge();
-}
-
-function updatePageSub() {
-  const sub = document.getElementById('page-sub');
-  if (!sub) return;
-  if (currentTab === 'feed') { sub.textContent = 'Everything the designer has uploaded — newest first.'; return; }
-  if (currentTab === 'copywriting') { sub.textContent = 'Product groups missing a copywriting doc.'; return; }
-  if (currentTab === 'ready') { sub.textContent = 'Product groups ready for designer work.'; return; }
-  if (selectedGroups.size === 0 && selectedPriorities.size === 0) {
-    sub.textContent = 'Select a product group or priority from the left to get started.';
-    return;
-  }
-  const parts = [];
-  if (selectedGroups.size > 0) parts.push([...selectedGroups].join(', '));
-  if (selectedPriorities.size > 0) parts.push([...selectedPriorities].map(p => PRIORITIES[p]?.label || p).join(', ') + ' priority');
-  sub.textContent = 'Showing ' + parts.join(' · ');
-}
-
-function renderStats() {
-  const { totalTasks, doneTasks, complete, total } = totalStats();
-  const pct = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  document.getElementById('stats-row').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">Products</div>
-      <div class="stat-value">${total}</div>
-      <div class="stat-sub">in progress</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Complete</div>
-      <div class="stat-value">${complete}</div>
-      <div class="stat-sub">fully launched</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Overall progress</div>
-      <div class="stat-value">${pct}%</div>
-      <div class="stat-sub">${doneTasks} of ${totalTasks} steps done</div>
-    </div>
-  `;
-}
-
-let groupAssets = {}; // group name -> { docName, docUrl, dropboxLink }
-
-async function loadGroupAssets() {
-  const { data, error } = await sb.from('tasks').select('id, data').eq('id', 'group_assets');
-  if (data && data.length > 0) {
-    groupAssets = data[0].data || {};
-  } else {
-    // Insert row if missing
-    await sb.from('tasks').insert({ id: 'group_assets', data: {} });
-  }
-}
-
-async function saveGroupAssets() {
-  setSyncStatus('syncing', 'Saving...');
-  const { error } = await sb.from('tasks').upsert({ id: 'group_assets', data: groupAssets });
-  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
-}
-
-async function setProductLive(productId, sectionId, val) {
-  const section = SECTIONS.find(s => s.id === sectionId);
-  if (!section) return;
-  if (!taskState[productId]) taskState[productId] = {};
-  if (!taskState[productId][sectionId]) taskState[productId][sectionId] = {};
-  for (const task of section.tasks) {
-    if (!isOverride(productId, sectionId, task.id)) {
-      taskState[productId][sectionId][task.id] = val;
-    }
-  }
-  render();
-  await saveState();
-}
-
-async function setGroupFlag(group, flag, val) {
-  if (!groupAssets[group]) groupAssets[group] = {};
-  groupAssets[group][flag] = val;
-
-  // Map flag -> which section + task to bulk check
-  const flagTaskMap = {
-    'upload_all_live':    { sectionId: 'upload',  taskIds: ['flat_file','amazon_inv','images','activate','blb_sync','aplus_connect'] },
-    'content_aplus_done': { sectionId: 'content', taskIds: ['aplus'] },
-    'content_pdp_done':   { sectionId: 'content', taskIds: ['pdp_images'] },
-  };
-
-  const mapping = flagTaskMap[flag];
-  if (mapping) {
-    const groupProducts = products.filter(p => getProductGroup(p.name) === group);
-    for (const p of groupProducts) {
-      if (!taskState[p.id]) taskState[p.id] = {};
-      if (!taskState[p.id][mapping.sectionId]) taskState[p.id][mapping.sectionId] = {};
-      for (const taskId of mapping.taskIds) {
-        // Only set if not already an override
-        if (!isOverride(p.id, mapping.sectionId, taskId)) {
-          taskState[p.id][mapping.sectionId][taskId] = val;
-        }
-      }
-    }
-    await saveState();
-  }
-
-  await saveGroupAssets();
-  render();
-}
-
-async function uploadGroupDoc(group, input) {
-  const file = input.files[0];
-  if (!file) return;
-  const groupKey = 'content|' + encodeURIComponent(group);
-  const statusEl = document.getElementById('doc-status-' + groupKey);
-  if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = 'Uploading...'; }
-
-  // Sanitize filename — no special chars
-  const safeName = group.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now() + '_' + file.name.replace(/[^a-z0-9._-]/gi, '_');
-
-  const { data, error } = await sb.storage.from('documents').upload(safeName, file, { upsert: true });
-
-  if (error) {
-    console.error('Upload error:', error);
-    if (statusEl) statusEl.textContent = 'Failed: ' + (error.message || error.error || JSON.stringify(error));
-    return;
-  }
-
-  const { data: urlData } = sb.storage.from('documents').getPublicUrl(safeName);
-  if (!groupAssets[group]) groupAssets[group] = {};
-  groupAssets[group].docName = file.name;
-  groupAssets[group].docUrl = urlData.publicUrl;
-
-  // Auto-check copywriting guide for all products in this group
-  const groupProducts = products.filter(p => getProductGroup(p.name) === group);
-  for (const p of groupProducts) {
-    if (!taskState[p.id]) taskState[p.id] = {};
-    if (!taskState[p.id]['content']) taskState[p.id]['content'] = {};
-    if (!isOverride(p.id, 'content', 'copy_guide')) {
-      taskState[p.id]['content']['copy_guide'] = true;
-    }
-  }
-  await saveState();
-  await saveGroupAssets();
-  input.value = '';
-  render();
-  if (currentTab === 'copywriting') renderCopywritingTab();
-  if (currentTab === 'ready') renderReadyTab();
-}
-
-async function clearGroupDoc(group) {
-  if (!confirm('Remove this doc?')) return;
-  if (groupAssets[group]) {
-    delete groupAssets[group].docName;
-    delete groupAssets[group].docUrl;
-  }
-  await saveGroupAssets();
-  render();
-}
-
-async function saveDropboxLinkAt(group, idx, val) {
-  const link = val.trim();
-  if (!link) return;
-  if (!groupAssets[group]) groupAssets[group] = {};
-  if (!groupAssets[group].dropboxLinks) groupAssets[group].dropboxLinks = [];
-  const prev = groupAssets[group].dropboxLinks[idx] || '';
-  if (link === prev) return; // no actual change — don't re-save or re-log
-  groupAssets[group].dropboxLinks[idx] = link;
-  await saveGroupAssets();
-  await logFeedEvent({ group, idx, url: link, role: role || 'unknown', action: prev ? 'updated' : 'added' });
-  render();
-}
-
-async function clearDropboxLinkAt(group, idx) {
-  if (!groupAssets[group]?.dropboxLinks) return;
-  groupAssets[group].dropboxLinks[idx] = '';
-  // Clean up trailing empty entries
-  while (groupAssets[group].dropboxLinks.length && !groupAssets[group].dropboxLinks[groupAssets[group].dropboxLinks.length - 1]) {
-    groupAssets[group].dropboxLinks.pop();
-  }
-  await saveGroupAssets();
-  render();
-}
-
-async function saveGroupNotes(group, val) {
-  if (!groupAssets[group]) groupAssets[group] = {};
-  groupAssets[group].notes = val;
-  await saveGroupAssets();
-}
-
-async function saveDropboxLink(group, val) {
-  await saveDropboxLinkAt(group, 0, val);
-}
-
-async function clearDropboxLink(group) {
-  await clearDropboxLinkAt(group, 0);
-}
-
-// ---- Designer activity feed (Coy-only view) ----
-async function logFeedEvent(evt) {
-  const entry = { ts: new Date().toISOString(), ...evt };
-  activityFeed.push(entry);
-  if (activityFeed.length > 500) activityFeed = activityFeed.slice(-500); // keep the row small
-  setSyncStatus('syncing', 'Saving...');
-  const { error } = await sb.from('tasks').upsert({ id: 'activity_feed', data: activityFeed });
-  setSyncStatus(error ? 'error' : 'synced', error ? 'Error saving' : 'Synced');
-  updateFeedBadge();
-}
-
-function feedUnreadCount() {
-  const last = localStorage.getItem('blb_feed_last_seen') || '';
-  return activityFeed.filter(e => (e.ts || '') > last).length;
-}
-
-function markFeedSeen() {
-  const latest = activityFeed.reduce((m, e) => ((e.ts || '') > m ? (e.ts || '') : m), '');
-  if (latest) localStorage.setItem('blb_feed_last_seen', latest);
-}
-
-function updateFeedBadge() {
-  const badge = document.getElementById('feed-badge');
-  if (!badge) return;
-  if (role !== 'coy') { badge.style.display = 'none'; return; }
-  const n = currentTab === 'feed' ? 0 : feedUnreadCount();
-  if (n > 0) { badge.textContent = n; badge.style.display = 'inline-flex'; }
-  else { badge.style.display = 'none'; }
-}
-
-function renderFeedTab() {
-  const container = document.getElementById('feed-container');
-  if (!container) return;
-  const events = [...activityFeed].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-  if (events.length === 0) {
-    container.innerHTML = `<div class="empty" style="padding:32px;text-align:center;">No designer uploads yet. When a Dropbox link is pasted in, it shows up here — newest first.</div>`;
-    return;
-  }
-  const lastSeen = localStorage.getItem('blb_feed_last_seen') || '';
-  let html = '<div class="feed-list">';
-  let lastDay = null;
-  for (const e of events) {
-    const d = e.ts ? new Date(e.ts) : null;
-    const dayLabel = d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date';
-    if (dayLabel !== lastDay) { html += `<div class="feed-day">${dayLabel}</div>`; lastDay = dayLabel; }
-    const time = d ? d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
-    const who = e.role === 'designer' ? 'Graphic Designer' : (e.role === 'coy' ? 'Coy' : (e.role || 'Someone'));
-    const isNew = (e.ts || '') > lastSeen;
-    const verb = e.action === 'updated' ? 'updated a Dropbox link on' : 'added a Dropbox link to';
-    const safeUrl = (e.url || '').replace(/"/g, '&quot;');
-    const safeGroup = (e.group || '—').replace(/</g, '&lt;');
-    html += `<div class="feed-item${isNew ? ' feed-new' : ''}">
-      <div class="feed-item-main"><span class="feed-who">${who}</span> ${verb} <span class="feed-group">${safeGroup}</span>${isNew ? ' <span class="feed-newdot">NEW</span>' : ''}</div>
-      <a class="feed-link" href="${safeUrl}" target="_blank" rel="noopener">🔗 ${safeUrl}</a>
-      <div class="feed-time">${time}</div>
-    </div>`;
-  }
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-const PRIORITIES = { high: { label: 'High', color: '#9B1C1C', bg: '#FDF2F2' }, medium: { label: 'Medium', color: '#92400E', bg: '#FFFBEB' }, low: { label: 'Low', color: '#057A55', bg: '#F0FAF4' } };
-
-async function setGroupPriority(group, priority) {
-  const groupProds = products.filter(p => getProductGroup(p.name) === group);
-  for (const p of groupProds) { p.priority = priority; }
-  render();
-  await saveProducts();
-}
-
-async function setPriority(productId, priority) {
-  const p = products.find(x => x.id === productId);
-  if (p) { p.priority = priority; }
-  render();
-  await saveProducts();
-}
-
-// Normalize product group names — handles plural/singular and spacing inconsistencies
-function normalizeGroupName(name) {
-  let n = name.trim();
-  // Remove trailing 's' for common plurals to unify e.g. "Shorts" vs "Short", "Tees" vs "Tee"
-  // But be careful — only normalize the BASE group name, not the full product name
-  const pluralMap = {
-    'Athletic Shorts': 'Athletic Short',
-    'Everyday Shorts': 'Everyday Short',
-    'Performance Hoodies': 'Performance Hoodie',
-    'Go To Tees': 'Go To Tee',
-    'Youth Athletic Shorts': 'Youth Athletic Short',
-    'Youth Everyday Shorts': 'Youth Everyday Short',
-    'Performance Polos': 'Performance Polo',
-    'Swim Trunks': 'Swim Trunk',
-    'Youth Go To Tees': 'Youth Go To Tee',
-    'Short Sleeve Tees': 'Short Sleeve Tee',
-  };
-  return pluralMap[n] || n;
-}
-
-function getProductGroup(name) {
-  // Extract base product line — everything before the first dash or em-dash
-  const match = name.match(/^([^—\-]+)/);
-  const raw = match ? match[1].trim() : name.trim();
-  return normalizeGroupName(raw);
-}
-
-let selectedGroups = new Set(); // empty = show nothing until selected
-let selectedPriorities = new Set();
-
-let openMenu = null;
-
-function toggleGroupMenu(group, btn) {
-  // Close any open menu
-  document.querySelectorAll('.sidebar-menu').forEach(m => m.remove());
-  if (openMenu === group) { openMenu = null; return; }
-  openMenu = group;
-
-  const safeG = group.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const menu = document.createElement('div');
-  menu.className = 'sidebar-menu';
-  menu.innerHTML = `<button class="sidebar-menu-item" onclick="batchDeleteGroup('${safeG}')">🗑 Delete all products</button>`;
-  btn.parentElement.appendChild(menu);
-
-  // Close on outside click
-  setTimeout(() => {
-    document.addEventListener('click', function closeMenu(e) {
-      if (!menu.contains(e.target)) {
-        menu.remove();
-        openMenu = null;
-        document.removeEventListener('click', closeMenu);
-      }
-    });
-  }, 10);
-}
-
-async function batchDeleteGroup(group) {
-  document.querySelectorAll('.sidebar-menu').forEach(m => m.remove());
-  const count = products.filter(p => getProductGroup(p.name) === group).length;
-  if (!confirm(`Delete all ${count} products in "${group}"? This cannot be undone.`)) return;
-  products = products.filter(p => getProductGroup(p.name) !== group);
-  selectedGroups.delete(group);
-  render();
-  await saveProducts();
-}
-
-function toggleGroupFilter(group) {
-  if (selectedGroups.has(group)) selectedGroups.delete(group);
-  else selectedGroups.add(group);
-  render();
-}
-
-function togglePriorityFilter(pri) {
-  if (selectedPriorities.has(pri)) selectedPriorities.delete(pri);
-  else selectedPriorities.add(pri);
-  render();
-}
-
-function getFilteredProducts() {
-  const groupActive = selectedGroups.size > 0;
-  const priActive = selectedPriorities.size > 0;
-  // Nothing selected at all → show nothing (unchanged starting state)
-  if (!groupActive && !priActive) return [];
-  return getSortedProducts().filter(p => {
-    const group = getProductGroup(p.name);
-    // Each ACTIVE filter type must match. An inactive filter (empty set) adds
-    // no constraint — so selecting a priority with no group still surfaces
-    // every product in that priority, and vice-versa. When both are active
-    // they narrow each other (group AND priority).
-    const groupPass = !groupActive || selectedGroups.has(group);
-    const priPass = !priActive || selectedPriorities.has(p.priority || 'none');
-    return groupPass && priPass;
-  });
-}
-
-function renderSidebar() {
-  // Priority filters
-  const priEl = document.getElementById('priority-filters');
-  if (priEl) {
-    const counts = { high: 0, medium: 0, low: 0 };
-    for (const p of products) { if (p.priority && counts[p.priority] !== undefined) counts[p.priority]++; }
-    priEl.innerHTML = ['high','medium','low'].map(pri => {
-      const active = selectedPriorities.has(pri);
-      return `<button class="sidebar-filter ${active ? 'active pri-'+pri : ''}" onclick="togglePriorityFilter('${pri}')">
-        <span class="sidebar-filter-name">${PRIORITIES[pri].label}</span>
-        <span class="sidebar-count">${counts[pri]}</span>
+/* ---- helpers ---- */
+const inStage = stage => skus.filter(s=>s.stage===stage);
+const groupsIn = stage => [...new Set(inStage(stage).map(s=>s.group_name))].sort((a,b)=>a.localeCompare(b));
+
+/* ---- render ---- */
+function render(){ renderPipe(); renderView(); }
+
+function renderPipe(){
+  const linear = STAGES.map((st,i)=>{
+    const n = inStage(st.key).length, active = state.tab===st.key;
+    return `${i>0?`<span class="chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>`:""}
+      <button class="tab ${active?'active':''}" data-act="tab" data-tab="${st.key}">
+        <span class="tnum">${i+1}</span><span class="tlabel">${st.label}</span><span class="tcount">${n}</span>
       </button>`;
-    }).join('');
-  }
-
-  // Group filters — get all unique normalized groups
-  const groupEl = document.getElementById('group-filters');
-  if (groupEl) {
-    const groupCounts = {};
-    // First make sure all groups exist
-    for (const p of products) {
-      const g = getProductGroup(p.name);
-      if (groupCounts[g] === undefined) groupCounts[g] = 0;
-    }
-    // Count products where the current role still has incomplete tasks
-    for (const p of products) {
-      const g = getProductGroup(p.name);
-      const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
-      const hasMyIncompleteTasks = visibleSections.some(s => {
-        const myTasks = s.tasks.filter(t => t.owner === role);
-        return myTasks.some(t => !getTaskDone(p.id, s.id, t.id));
-      });
-      if (hasMyIncompleteTasks) groupCounts[g] = (groupCounts[g] || 0) + 1;
-    }
-    const sortedGroups = Object.entries(groupCounts).sort((a,b) => a[0].localeCompare(b[0]));
-    groupEl.innerHTML = sortedGroups.map(([g, count]) => {
-      const active = selectedGroups.has(g);
-      const safeG = g.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-      const dotsBtn = role === 'coy'
-        ? `<button class="sidebar-dots" onclick="event.stopPropagation();toggleGroupMenu('${safeG}',this)" title="Options">···</button>`
-        : '';
-      return `<div class="sidebar-group-row">
-        <button class="sidebar-filter ${active ? 'active' : ''}" onclick="toggleGroupFilter('${safeG}')" title="${g}">
-          <span class="sidebar-filter-name">${g}</span>
-          <span class="sidebar-count">${count}</span>
-        </button>
-        ${dotsBtn}
-      </div>`;
-    }).join('');
-  }
+  }).join("");
+  const bn = inStage(BRANCH.key).length, ba = state.tab===BRANCH.key;
+  const branch = `<span class="branch-sep"></span>
+    <button class="tab branch ${ba?'active':''}" data-act="tab" data-tab="${BRANCH.key}">
+      <span class="tlabel">${BRANCH.label}</span><span class="tcount">${bn}</span>
+    </button>`;
+  $("pipe").innerHTML = linear + branch;
 }
 
-function getSortedProducts() {
-  // Group by product line, then sort by priority within each group
-  const priorityOrder = { high: 0, medium: 1, low: 2, undefined: 3 };
-  return [...products].sort((a, b) => {
-    const ga = getProductGroup(a.name);
-    const gb = getProductGroup(b.name);
-    if (ga !== gb) return ga.localeCompare(gb);
-    return (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
-  });
+function renderView(){
+  if (!configOK()){ $("view").innerHTML = `<div class="empty"><p>Connect the backend to load your pipeline.</p></div>`; return; }
+  if (state.group) renderDetail();
+  else renderGroupList();
 }
 
-function renderSections() {
-  const container = document.getElementById('sections-container');
-  let html = '';
+function renderGroupList(){
+  const st = stageDef(state.tab);
+  const gs = groupsIn(state.tab);
+  const canAdd = state.tab==="groups";
 
-  const visibleSections = SECTIONS.filter(s => role === 'coy' || s.id === 'content');
+  let html = `<div class="vhead"><div>
+      <h2>${st.label}</h2><p class="hint">${st.hint}</p>
+    </div>${canAdd?`<button class="addbtn" data-act="addgroup-open">+ New group</button>`:""}</div>`;
 
-  for (const section of visibleSections) {
-    const prog = sectionProgress(section.id);
-    const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
-    const isOpen = !collapsed[section.id];
+  if (canAdd && state.addingGroup){
+    html += `<div class="form">
+      <div><label>Product group name</label><input id="fGroup" class="inp" placeholder="e.g. Performance Hoodie" /></div>
+      <div><label>SKUs — one per line</label><textarea id="fSkus" class="inp" placeholder="Classic Deer Camo — S&#10;Classic Deer Camo — M&#10;Classic Deer Camo — L"></textarea></div>
+      <div class="frow"><button class="btn sec" data-act="addgroup-cancel">Cancel</button><button class="btn" data-act="addgroup-save">Add group</button></div>
+    </div>`;
+  }
 
-    html += `<div class="section">
-      <div class="section-header" onclick="toggleSection('${section.id}')">
-        <span class="section-title">${section.title}</span>
-        <div class="section-right">
-          <div class="prog-wrap">
-            <div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div>
-            <span class="prog-text">${prog.done}/${prog.total}</span>
-          </div>
-          <span class="chevron ${isOpen ? 'open' : ''}">&#8964;</span>
+  if (!gs.length){
+    html += `<div class="empty"><p>${
+      state.tab==="groups" ? "No product groups yet. Add your first one to start the pipeline." :
+      state.tab==="closed" ? "Nothing here yet. SKUs arrive once they're added to Amazon and closed." :
+      state.tab==="selling" ? "Nothing live yet. SKUs arrive once A+, inventory, and launch are all checked." :
+      "Nothing here. Use \u201CNot going to sell\u201D on a product to park it here."
+    }</p></div>`;
+  } else {
+    html += `<div class="grid">` + gs.map(g=>{
+      const rows = skus.filter(s=>s.group_name===g && s.stage===state.tab);
+      let sub="", pct=0;
+      if (state.tab==="closed"){
+        const total = rows.length*3;
+        const done = rows.reduce((a,s)=>a+(s.aplus_synced?1:0)+(s.inventory_synced?1:0)+(s.launched_live?1:0),0);
+        pct = total? done/total*100:0; sub=`${rows.length} SKU${rows.length!=1?'s':''}`;
+      } else { sub=`${rows.length} SKU${rows.length!=1?'s':''}`; pct = state.tab==="selling"?100:0; }
+      return `<button class="gcard" data-act="open" data-group="${esc(g)}">
+        <div class="gname">${esc(g)}</div>
+        <div class="gmeta"><span>${sub}</span><span class="go">Open →</span></div>
+        ${state.tab==="closed"?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}
+      </button>`;
+    }).join("") + `</div>`;
+  }
+  $("view").innerHTML = html;
+}
+
+function renderDetail(){
+  const g = state.group, tab = state.tab;
+  const rows = skus.filter(s=>s.group_name===g && s.stage===tab);
+  if (!rows.length){ state.group=null; return renderView(); }
+
+  let html = `<button class="back" data-act="back">← All groups</button>
+    <div class="vhead"><div><h2>${esc(g)}</h2>
+    <p class="hint">${stageDef(tab).hint}</p></div>
+    ${tab==="groups"?`<div style="display:flex;gap:8px"><button class="addbtn ghost" data-act="rename" data-group="${esc(g)}">Rename</button><button class="addbtn ghost" data-act="addskus-open">+ Add SKUs</button></div>`:""}</div>`;
+
+  if (tab==="groups" && state.addingGroup){
+    html += `<div class="form">
+      <div><label>Add SKUs to ${esc(g)} — one per line</label><textarea id="fSkus" class="inp" placeholder="Classic Deer Camo — XL&#10;Timber Green — M"></textarea></div>
+      <div class="frow"><button class="btn sec" data-act="addskus-cancel">Cancel</button><button class="btn" data-act="addskus-save">Add SKUs</button></div>
+    </div>`;
+  }
+
+  html += `<div class="skulist">` + rows.map(s=>{
+    const label = `<div class="slabel">${esc(s.sku)}${s.upc?`<span class="code">${esc(s.upc)}</span>`:""}</div>`;
+    if (tab==="groups"){
+      return `<div class="sku">${label}
+        <div class="checks"><span class="chk single-chk" role="checkbox" tabindex="0" aria-checked="false" data-act="move" data-id="${s.id}">
+          <span class="box">${CHECK_SVG}</span>
+          <span class="ctext">Added to Amazon inventory with images and closed</span>
+        </span></div>
+        <div class="rowtools">
+          <button class="tbtn sell" data-act="sell" data-id="${s.id}">Live &amp; selling →</button>
+          <button class="tbtn nogo" data-act="blbonly" data-id="${s.id}">Not going to sell</button>
+          <button class="tbtn del" data-act="del" data-id="${s.id}">Delete</button>
         </div>
       </div>`;
-
-    if (isOpen) {
-      if (selectedGroups.size === 0 && selectedPriorities.size === 0) {
-        html += `<div class="empty">← Select a product group or priority to view tasks.</div>`;
-      } else {
-        const filtered = getFilteredProducts();
-        if (filtered.length === 0) {
-          html += `<div class="empty">No products match your filters.</div>`;
-        } else {
-        const sorted = filtered;
-        let lastGroup = null;
-        for (const product of sorted) {
-          const group = getProductGroup(product.name);
-          if (group !== lastGroup) {
-            if (lastGroup !== null) html += `</div>`;
-            const groupKey = section.id + '|' + encodeURIComponent(group);
-            const groupData = groupAssets[group] || {};
-            const docFile = groupData.docName;
-            const docUrl = groupData.docUrl;
-            const dropboxLink = groupData.dropboxLink || '';
-
-            // Group-level checkboxes
-            const allLive = groupData['upload_all_live'] || false;
-            const allAplus = groupData['content_aplus_done'] || false;
-            const allPdp = groupData['content_pdp_done'] || false;
-
-            let groupChecks = '';
-            const escapedGroup = group.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            if (section.id === 'upload' && role === 'coy') {
-              groupChecks = `
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:500;color:${allLive ? 'var(--green)' : 'var(--text2)'};">
-                  <input type="checkbox" ${allLive ? 'checked' : ''} data-group="${group.replace(/"/g,'&quot;')}" data-flag="upload_all_live"
-                    onchange="setGroupFlag(this.dataset.group,this.dataset.flag,this.checked)"
-                    style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
-                  All Uploaded &amp; Live
-                </label>`;
-            } else if (section.id === 'content' && role === 'designer') {
-              groupChecks = `
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:500;color:${allAplus ? 'var(--green)' : 'var(--text2)'};">
-                  <input type="checkbox" ${allAplus ? 'checked' : ''} data-group="${group.replace(/"/g,'&quot;')}" data-flag="content_aplus_done"
-                    onchange="setGroupFlag(this.dataset.group,this.dataset.flag,this.checked)"
-                    style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
-                  All A+ Content Done
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:500;color:${allPdp ? 'var(--green)' : 'var(--text2)'};">
-                  <input type="checkbox" ${allPdp ? 'checked' : ''} data-group="${group.replace(/"/g,'&quot;')}" data-flag="content_pdp_done"
-                    onchange="setGroupFlag(this.dataset.group,this.dataset.flag,this.checked)"
-                    style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
-                  All PDP Images Done
-                </label>`;
-            } else if (section.id === 'content' && role === 'coy') {
-              groupChecks = `
-                <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:${allAplus ? 'var(--green)' : 'var(--text3)'};">
-                  <input type="checkbox" ${allAplus ? 'checked' : ''} disabled
-                    style="width:14px;height:14px;accent-color:var(--green);" />
-                  All A+ Content Done
-                </label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:${allPdp ? 'var(--green)' : 'var(--text3)'};">
-                  <input type="checkbox" ${allPdp ? 'checked' : ''} disabled
-                    style="width:14px;height:14px;accent-color:var(--green);" />
-                  All PDP Images Done
-                </label>`;
-            }
-
-            // Group priority — current priority if all products in group share same priority
-            const groupProds = products.filter(p => getProductGroup(p.name) === group);
-            const groupPri = groupProds.length > 0 && groupProds.every(p => p.priority === groupProds[0].priority) ? groupProds[0].priority : null;
-
-            const groupPriHtml = role === 'coy' ? `
-              <div style="display:flex;align-items:center;gap:6px;">
-                ${['high','medium','low'].map(p => `
-                  <button data-group="${group.replace(/"/g,'&quot;')}" data-pri="${p}"
-                    onclick="event.stopPropagation();setGroupPriority(this.dataset.group,this.dataset.pri)"
-                    style="padding:2px 10px;border-radius:10px;border:1px solid ${PRIORITIES[p].color};background:${groupPri===p?PRIORITIES[p].bg:'transparent'};color:${PRIORITIES[p].color};font-size:11px;font-weight:500;cursor:pointer;">
-                    ${PRIORITIES[p].label}
-                  </button>`).join('')}
-                ${groupPri ? `<button data-group="${group.replace(/"/g,'&quot;')}"
-                  onclick="event.stopPropagation();setGroupPriority(this.dataset.group,null)"
-                  style="padding:2px 8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;cursor:pointer;">Clear</button>` : ''}
-              </div>` : '';
-
-            const dropboxLinks = groupData.dropboxLinks || (dropboxLink ? [dropboxLink] : []);
-            const notes = groupData.notes || '';
-
-            // Build dropbox links HTML
-            let dropboxHtml = '';
-            for (let di = 0; di < 3; di++) {
-              const lval = dropboxLinks[di] || '';
-              const dkey = `${groupKey}-db${di}`;
-              if (lval) {
-                dropboxHtml += `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
-                  <a class="asset-link" href="${lval}" target="_blank">🔗 Link ${di+1}</a>
-                  ${role === 'designer' ? `<button class="asset-clear" data-group="${group.replace(/"/g,'&quot;')}" data-idx="${di}" onclick="clearDropboxLinkAt(this.dataset.group,parseInt(this.dataset.idx))" title="Remove">✕</button>` : ''}
-                </div>`;
-              } else if (role === 'designer') {
-                dropboxHtml += `<input class="asset-input" id="${dkey}" type="url" placeholder="Paste Dropbox link ${di+1}..."
-                  data-group="${group.replace(/"/g,'&quot;')}" data-idx="${di}"
-                  onblur="saveDropboxLinkAt(this.dataset.group,parseInt(this.dataset.idx),this.value)"
-                  onkeydown="if(event.key==='Enter')saveDropboxLinkAt(this.dataset.group,parseInt(this.dataset.idx),this.value)"
-                  style="margin-bottom:3px;" />`;
-              }
-            }
-            if (!dropboxHtml && role !== 'designer') {
-              dropboxHtml = `<span style="font-size:12px;color:var(--text3);">No Dropbox links yet</span>`;
-            }
-
-            html += `<div class="product-group">
-              <div class="group-label">
-                <span>${group}</span>
-                ${groupPriHtml}
-              </div>
-              ${groupChecks ? `<div style="display:flex;align-items:center;gap:20px;padding:8px 18px;background:var(--surface);border-bottom:1px solid var(--border);">${groupChecks}</div>` : ''}`;
-
-            if (section.id === 'content' || section.id === 'upload') {
-              html += `<div class="group-body">
-                <div class="group-assets">
-                  <div class="group-asset-item">
-                    <span class="asset-label">📄 Copywriting Doc</span>
-                    <div class="asset-value">
-                      ${docFile && docUrl
-                        ? `<a class="asset-link" href="${docUrl}" target="_blank" title="${docFile}">📎 ${docFile}</a>
-                           ${role === 'coy' ? `<button class="asset-clear" data-group="${group.replace(/"/g,'&quot;')}" onclick="clearGroupDoc(this.dataset.group)" title="Remove">✕</button>` : ''}`
-                        : role === 'coy'
-                          ? `<span id="doc-status-${groupKey}" class="asset-uploading" style="display:none;">Uploading...</span>
-                             <input type="file" id="doc-input-${groupKey}" data-group="${group.replace(/"/g,'&quot;')}" accept=".doc,.docx,.pdf" style="display:none;" onchange="uploadGroupDoc(this.dataset.group, this)" />
-                             <button class="asset-btn" onclick="document.getElementById('doc-input-${groupKey}').click()">+ Upload copywriting doc</button>`
-                          : `<span style="font-size:12px;color:var(--text3);">No copywriting doc yet</span>`
-                      }
-                    </div>
-                  </div>
-                  <div class="group-asset-item">
-                    <span class="asset-label">📦 Dropbox</span>
-                    <div class="asset-value" style="flex-direction:column;align-items:flex-start;">
-                      ${dropboxHtml}
-                    </div>
-                  </div>
-                </div>
-                <div class="group-notes">
-                  <div class="asset-label" style="margin-bottom:6px;">📝 Notes</div>
-                  <textarea class="notes-input"
-                    data-group="${group.replace(/"/g,'&quot;')}"
-                    placeholder="Add notes for this product group..."
-                    onblur="saveGroupNotes(this.dataset.group, this.value)"
-                    >${notes}</textarea>
-                </div>
-              </div>`;
-            }
-
-            lastGroup = group;
-          }
-
-          const pkey = section.id + '|' + product.id;
-          const status = productStatus(product.id, section.id);
-          const isProductOpen = productCollapsed[pkey] !== true;
-          const doneTasks = section.tasks.filter(t => getTaskDone(product.id, section.id, t.id)).length;
-          const badgeClass = status === 'complete' ? 'badge-complete' : status === 'progress' ? 'badge-progress' : 'badge-pending';
-          const badgeLabel = status === 'complete' ? 'Complete' : status === 'progress' ? `${doneTasks}/${section.tasks.length} done` : 'Not started';
-          const pri = product.priority;
-          const priStyle = pri ? `style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:10px;color:${PRIORITIES[pri].color};background:${PRIORITIES[pri].bg};"` : '';
-          const isLive = section.id === 'upload' && status === 'complete';
-
-          // Live & Selling checkbox — only in upload section for Coy
-          const liveCheck = (section.id === 'upload' && role === 'coy') ? `
-            <label onclick="event.stopPropagation();" style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;font-weight:500;color:${isLive ? 'var(--green)' : 'var(--text3)'};">
-              <input type="checkbox" ${isLive ? 'checked' : ''}
-                data-pid="${product.id}" data-sid="${section.id}"
-                onchange="setProductLive(this.dataset.pid, this.dataset.sid, this.checked)"
-                style="width:14px;height:14px;accent-color:var(--green);cursor:pointer;" />
-              Live &amp; Selling
-            </label>` : '';
-
-          html += `<div class="product-row">
-            <div class="product-header" onclick="toggleProduct('${pkey}')">
-              <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
-                <span class="product-name">${product.name}</span>
-                ${liveCheck}
-              </div>
-              <div class="product-right">
-                ${pri ? `<span ${priStyle}>${PRIORITIES[pri].label}</span>` : ''}
-                <span class="badge ${badgeClass}">${badgeLabel}</span>
-                ${role === 'coy' ? `<button class="delete-btn" onclick="event.stopPropagation();deleteProduct('${product.id}')" title="Remove product">&#10005;</button>` : ''}
-                <span class="chevron ${isProductOpen ? 'open' : ''}" style="font-size:13px;">&#8964;</span>
-              </div>
-            </div>`;
-
-          if (isProductOpen) {
-            html += `<div class="task-list">`;
-            if (role === 'coy') {
-              html += `<div class="task-item" style="margin-bottom:6px;">
-                <span style="font-size:12px;color:var(--text3);margin-right:8px;">Priority:</span>
-                ${['high','medium','low'].map(p => `<button onclick="event.stopPropagation();setPriority('${product.id}','${p}')" style="margin-right:4px;padding:2px 10px;border-radius:10px;border:1px solid ${PRIORITIES[p].color};background:${pri===p?PRIORITIES[p].bg:'transparent'};color:${PRIORITIES[p].color};font-size:11px;font-weight:500;cursor:pointer;">${PRIORITIES[p].label}</button>`).join('')}
-                ${pri ? `<button onclick="event.stopPropagation();setPriority('${product.id}',null)" style="padding:2px 8px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:11px;cursor:pointer;">Clear</button>` : ''}
-              </div>`;
-            }
-            for (const task of section.tasks) {
-              const checked = getTaskDone(product.id, section.id, task.id);
-              const override = isOverride(product.id, section.id, task.id);
-              const canCheck = role === task.owner && !override;
-
-              html += `<div class="task-item">
-                <input type="checkbox" class="task-check owner-${task.owner}"
-                  ${checked ? 'checked' : ''}
-                  ${!canCheck ? 'disabled' : ''}
-                  onchange="setTask('${product.id}','${section.id}','${task.id}',this.checked)"
-                  title="${override ? 'Already done for this product line' : (!canCheck ? 'Only ' + (task.owner === 'coy' ? 'Coy' : 'Designer') + ' can check this off' : '')}"
-                />
-                <span class="task-label ${checked ? 'done' : ''}">${task.label}</span>
-                <span class="owner-pill ${task.owner}">${task.owner === 'coy' ? 'Coy' : 'Designer'}</span>
-                ${override ? '<span class="existing-tag">existing</span>' : ''}
-              </div>`;
-            }
-            html += `</div>`;
-          }
-          html += `</div>`;
-        }
-        if (lastGroup !== null) html += `</div>`; // close last group
-        } // close filtered.length > 0
-      } // close selectedGroups check
     }
-    html += `</div>`;
-  }
-
-  container.innerHTML = html;
-}
-
-function toggleSection(id) {
-  collapsed[id] = !collapsed[id];
-  render();
-}
-
-function toggleProduct(key) {
-  productCollapsed[key] = !productCollapsed[key];
-  render();
-}
-
-// ── EXCEL IMPORT ─────────────────────────────────────────────
-
-// Color → task status mapping from the spreadsheet color key
-const COLOR_STATUS = {
-  'FFD9EAD3': 'complete',       // green = 100% done
-  'FFFF00FF': 'coy_upload',     // magenta = Designer done, Coy needs to upload
-  'FFFFF2CC': 'designer_pdp',   // yellow = PDP images needed (designer)
-  'FFFCE5CD': 'coy_copy_pdp',   // orange = Copywriting guide + PDP needed (coy)
-  'FFC9DAF8': 'designer_pdp_aplus', // blue = PDP + A+ content needed (designer)
-  'FFF4CCCC': 'coy_all',        // pink = Copywriting + PDP + A+ needed (coy)
-  'FFD5A6BD': 'designer_aplus', // purple = A+ content needed (designer)
-  '00000000': 'complete',       // no fill = done
-};
-
-// Map color status → which tasks are already done (overrides) vs still needed
-function statusToOverrides(status) {
-  // Returns { upload: {taskId: true}, content: {taskId: true} } for tasks already done
-  switch(status) {
-    case 'complete':
-      return {
-        upload: { flat_file:true, amazon_inv:true, images:true, activate:true, blb_sync:true, aplus_connect:true },
-        content: { copy_guide:true, aplus:true, pdp_images:true }
-      };
-    case 'coy_upload': // Designer done, Coy needs to upload — content all done
-      return {
-        upload: {},
-        content: { copy_guide:true, aplus:true, pdp_images:true }
-      };
-    case 'designer_pdp': // PDP images needed — copy guide done, A+ done
-      return {
-        upload: {},
-        content: { copy_guide:true, aplus:true }
-      };
-    case 'designer_pdp_aplus': // PDP + A+ needed — only copy guide done
-      return {
-        upload: {},
-        content: { copy_guide:true }
-      };
-    case 'designer_aplus': // A+ needed — copy guide + PDP done
-      return {
-        upload: {},
-        content: { copy_guide:true, pdp_images:true }
-      };
-    case 'coy_copy_pdp': // Copywriting + PDP needed — nothing done in content
-      return { upload: {}, content: {} };
-    case 'coy_all': // Everything needed
-      return { upload: {}, content: {} };
-    default:
-      return { upload: {}, content: {} };
-  }
-}
-
-function statusLabel(status) {
-  const labels = {
-    complete: 'Complete',
-    coy_upload: 'Coy: upload',
-    designer_pdp: 'Designer: PDP images',
-    designer_pdp_aplus: 'Designer: PDP + A+',
-    designer_aplus: 'Designer: A+ content',
-    coy_copy_pdp: 'Coy: copy + PDP',
-    coy_all: 'Coy: all steps',
-  };
-  return labels[status] || status;
-}
-
-function statusClass(status) {
-  if (status === 'complete') return 'status-complete';
-  if (status.startsWith('coy')) return 'status-coy';
-  if (status.startsWith('designer')) return 'status-designer';
-  return 'status-mixed';
-}
-
-let pendingImport = [];
-
-function handleExcelUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array', cellStyles: true });
-
-      const PRODUCT_SHEETS = ['Mens', 'Youth', 'Accessories'];
-      const parsed = {};
-
-      for (const sheetName of PRODUCT_SHEETS) {
-        if (!wb.SheetNames.includes(sheetName)) continue;
-        const ws = wb.Sheets[sheetName];
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        parsed[sheetName] = {};
-
-        for (let r = 7; r <= range.e.r; r++) { // row 8+ (0-indexed = 7)
-          const skuCell = ws[XLSX.utils.encode_cell({r, c: 0})];
-          const nameCell = ws[XLSX.utils.encode_cell({r, c: 1})];
-          if (!nameCell || !nameCell.v) continue;
-
-          const name = String(nameCell.v).trim();
-          const bgColor = (nameCell.s && nameCell.s.bgColor && nameCell.s.bgColor.rgb)
-            ? nameCell.s.bgColor.rgb.toUpperCase()
-            : '00000000';
-          const status = COLOR_STATUS[bgColor] || 'coy_all';
-
-          if (!parsed[sheetName][name]) {
-            parsed[sheetName][name] = status;
-          }
-        }
-      }
-
-      // Build preview list
-      pendingImport = [];
-      const existingNames = new Set(products.map(p => p.name.toLowerCase()));
-
-      for (const [sheet, prods] of Object.entries(parsed)) {
-        for (const [name, status] of Object.entries(prods)) {
-          pendingImport.push({
-            sheet,
-            name,
-            status,
-            duplicate: existingNames.has(name.toLowerCase()),
-            overrides: statusToOverrides(status),
-          });
-        }
-      }
-
-      showImportModal();
-    } catch(err) {
-      alert('Could not read the file. Make sure it\'s the Burlebo line sheet (.xlsx).');
-      console.error(err);
-    }
-    event.target.value = '';
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function showImportModal() {
-  const existing = document.getElementById('import-modal');
-  if (existing) existing.remove();
-
-  const bySheet = {};
-  for (const p of pendingImport) {
-    if (!bySheet[p.sheet]) bySheet[p.sheet] = [];
-    bySheet[p.sheet].push(p);
-  }
-
-  const newCount = pendingImport.filter(p => !p.duplicate).length;
-  const dupCount = pendingImport.filter(p => p.duplicate).length;
-
-  let sheetsHtml = '';
-  for (const [sheet, prods] of Object.entries(bySheet)) {
-    sheetsHtml += `<div class="import-sheet">
-      <div class="import-sheet-title">${sheet} (${prods.length})</div>`;
-    for (const p of prods) {
-      sheetsHtml += `<div class="import-product-row ${p.duplicate ? 'import-duplicate' : ''}">
-        <span class="import-product-name">${p.name}${p.duplicate ? '<span class="dup-tag">already added</span>' : ''}</span>
-        <span class="import-product-status ${statusClass(p.status)}">${statusLabel(p.status)}</span>
+    if (tab==="closed"){
+      const done=(s.aplus_synced?1:0)+(s.inventory_synced?1:0)+(s.launched_live?1:0);
+      const checks = FIELDS.map(f=>`<span class="chk" role="checkbox" tabindex="0" aria-checked="${s[f.key]?'true':'false'}" data-act="toggle" data-id="${s.id}" data-field="${f.key}">
+          <span class="box">${CHECK_SVG}</span><span class="ctext">${f.label}</span></span>`).join("");
+      return `<div class="sku">${label}
+        <div class="checks">${checks}</div>
+        <span class="miniprog">${done}/3</span>
+        <div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="groups">↩ Back</button></div>
       </div>`;
     }
-    sheetsHtml += `</div>`;
-  }
-
-  const div = document.createElement('div');
-  div.id = 'import-modal';
-  div.className = 'import-modal';
-  div.innerHTML = `
-    <div class="import-box">
-      <div class="import-title">Import products from Excel</div>
-      <div class="import-sub">Review products below. Status is read from the color coding in your sheet.</div>
-      <div class="import-preview">${sheetsHtml}</div>
-      <div class="import-count">${newCount} new products · ${dupCount} already in tracker (will be skipped)</div>
-      <div class="import-actions">
-        <button class="btn" onclick="document.getElementById('import-modal').remove()">Cancel</button>
-        <button class="btn btn-primary" onclick="confirmImport()">Import ${newCount} products</button>
-      </div>
-    </div>`;
-  document.body.appendChild(div);
-}
-
-async function confirmImport() {
-  const toAdd = pendingImport.filter(p => !p.duplicate);
-  for (const p of toAdd) {
-    const id = 'p-' + Date.now() + '-' + Math.random().toString(36).slice(2,6);
-    products.push({ id, name: p.name, overrides: p.overrides });
-  }
-  document.getElementById('import-modal').remove();
-  render();
-  await saveProducts();
-}
-
-// ── END EXCEL IMPORT ──────────────────────────────────────────
-
-// A promise that resolves once initial data has loaded. onAuthReady waits on
-// this so render() is never called against empty state.
-let dataReady;
-
-async function init() {
-  dataReady = (async () => {
-    try {
-      await loadData();
-      await loadGroupAssets();
-    } catch(e) {
-      console.error('Load error:', e);
+    if (tab==="selling"){
+      return `<div class="sku">${label}
+        <span class="livebadge">● Live</span>
+        <div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="closed">↩ Back to Ready</button></div>
+      </div>`;
     }
-  })();
+    // blb_only
+    return `<div class="sku">${label}
+      <span class="livebadge nogo-badge">BURLEBO only</span>
+      <div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="groups">↩ Back to Products</button></div>
+    </div>`;
+  }).join("") + `</div>`;
 
-  await dataReady;
-
-  document.getElementById('loading').style.display = 'none';
-  // Reveal the app so auth.js can position its role pill into the header.
-  // We don't render() yet — that happens once auth.js fires onAuthReady().
-  document.getElementById('app').style.display = 'block';
-
-  sb.channel('tasks-changes')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, async (payload) => {
-      if (payload.new.id === 'state') taskState = payload.new.data || {};
-      if (payload.new.id === 'products') products = payload.new.data || [];
-      if (payload.new.id === 'group_assets') groupAssets = payload.new.data || {};
-      if (payload.new.id === 'activity_feed') activityFeed = payload.new.data || [];
-      // Don't render until auth has completed, otherwise role-conditional
-      // rendering would crash with role = null.
-      if (role) render();
-      setSyncStatus('synced', 'Synced');
-    })
-    .subscribe();
-
-  const npInput = document.getElementById('new-product-input');
-  if (npInput) npInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') addProduct();
-  });
+  if (tab==="groups"){
+    html += `<div style="margin-top:20px"><button class="tbtn del" data-act="delgroup" data-group="${esc(g)}">Delete this group</button></div>`;
+  }
+  $("view").innerHTML = html;
 }
 
-// Called by auth.js once the user is authenticated and allowed on this page.
-window.onAuthReady = async function (r) {
-  role = r;
-  // Wait for the initial data load to finish before first render. If auth
-  // fires before data, we'd otherwise render nothing.
-  if (dataReady) { try { await dataReady; } catch {} }
-  const addBar = document.getElementById('add-bar');
-  if (addBar) addBar.style.display = (role === 'coy') ? 'flex' : 'none';
-  render();
-};
+/* ---- events (delegated) ---- */
+$("app").addEventListener("click", e=>{
+  const el = e.target.closest("[data-act]"); if(!el) return;
+  handle(el.dataset.act, el);
+});
+$("app").addEventListener("keydown", e=>{
+  if (e.key!=="Enter" && e.key!==" ") return;
+  const el = e.target.closest('[role="checkbox"]'); if(!el) return;
+  e.preventDefault(); handle(el.dataset.act, el);
+});
 
-init();
+function handle(act, el){
+  const id = el.dataset.id ? Number(el.dataset.id) : null;
+  const s = id!=null ? skus.find(x=>x.id===id) : null;
+  switch(act){
+    case "tab": state.tab=el.dataset.tab; state.group=null; state.addingGroup=false; render(); break;
+    case "open": state.group=el.dataset.group; render(); break;
+    case "back": state.group=null; state.addingGroup=false; render(); break;
+    case "move": if(s) moveClosed(s.id); break;
+    case "sell": if(s) moveSelling(s.id); break;
+    case "blbonly": if(s) moveBlb(s.id); break;
+    case "rename": renameGroup(el.dataset.group); break;
+    case "toggle": if(s) toggleField(s, el.dataset.field); break;
+    case "revert": if(s) revert(s.id, el.dataset.to); break;
+    case "del": if(s) delSku(s.id); break;
+    case "delgroup": delGroup(el.dataset.group, "groups"); break;
+    case "addgroup-open": state.addingGroup=true; renderView(); $("fGroup")?.focus(); break;
+    case "addgroup-cancel": state.addingGroup=false; renderView(); break;
+    case "addgroup-save": saveNewGroup(); break;
+    case "addskus-open": state.addingGroup=true; renderView(); $("fSkus")?.focus(); break;
+    case "addskus-cancel": state.addingGroup=false; renderView(); break;
+    case "addskus-save": saveMoreSkus(); break;
+  }
+}
 
-window.onerror = function(msg, src, line) {
-  document.getElementById('loading').innerHTML = `<div style="font-family:monospace;font-size:12px;color:#9B1C1C;padding:20px;max-width:600px;text-align:left;">
-    <strong>Error loading app:</strong><br>${msg}<br><small>${src} line ${line}</small>
-  </div>`;
-};
+function parseLines(v){ return (v||"").split("\n").map(x=>x.trim()).filter(Boolean); }
+
+async function saveNewGroup(){
+  const name = $("fGroup").value.trim();
+  const list = parseLines($("fSkus").value);
+  if (!name){ toast("Name the group first"); return; }
+  if (!list.length){ toast("Add at least one SKU"); return; }
+  state.addingGroup=false;
+  await addSkus(name, list);
+}
+async function saveMoreSkus(){
+  const list = parseLines($("fSkus").value);
+  if (!list.length){ toast("Add at least one SKU"); return; }
+  state.addingGroup=false;
+  await addSkus(state.group, list);
+}
+
+/* ---- toast ---- */
+let tT; function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(tT); tT=setTimeout(()=>t.classList.remove("show"),1800); }
 </script>
 </body>
 </html>
