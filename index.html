@@ -1,513 +1,423 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>BURLEBO — Launch Pipeline</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracker — Burlebo Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/auth.js"></script>
 <style>
-  :root{
-    --paper:#f4f1e9; --card:#fffefa; --card-2:#faf7ee;
-    --ink:#23271f; --dim:#7b7666; --faint:#a49e8d; --line:#ddd7c7;
-    --olive:#4a6330; --olive-d:#374b22; --olive-soft:#eef1e2;
-    --kraft:#a9743a; --kraft-soft:#f6ecdd;
-    --live:#4a6330;
-    --radius:12px;
+  :root {
+    --bg: #0d0f12; --panel: #14171c; --panel-2: #1a1e25;
+    --border: #252a33; --text: #e8eaed; --text-dim: #8a92a0;
+    --accent: #ff6b35; --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --blue: #38bdf8; --purple: #a78bfa;
+    --radius: 10px; --radius-sm: 6px;
+    --coy: #ff6b35;      --coy-bg: rgba(255, 107, 53, 0.15);
+    --designer: #a78bfa; --designer-bg: rgba(167, 139, 250, 0.15);
+    --admin: #4ade80;    --admin-bg: rgba(74, 222, 128, 0.15);
+    --employee: #38bdf8; --employee-bg: rgba(56, 189, 248, 0.15);
   }
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0}
-  body{
-    background:var(--paper); color:var(--ink);
-    font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased;
-    line-height:1.5; min-height:100vh;
-  }
-  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
-  input,textarea{font-family:inherit}
-  .osw{font-family:'Oswald',sans-serif}
-  .hidden{display:none !important}
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; background: var(--panel); }
+  header h1 { font-size: 18px; font-weight: 700; margin: 0; }
+  header nav { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  header nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; font-weight: 500; }
+  header nav a:hover { color: var(--text); }
+  header nav a.active { color: var(--accent); }
+  .role-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .role-pill:hover { opacity: 0.85; }
+  .role-pill.coy { background: var(--coy-bg); color: var(--coy); }
+  .role-pill.designer { background: var(--designer-bg); color: var(--designer); }
+  .role-pill.admin { background: var(--admin-bg); color: var(--admin); }
+  .role-pill.employee { background: var(--employee-bg); color: var(--employee); }
 
-  /* ---- header ---- */
-  .head{
-    background:var(--olive); color:#f4f1e9;
-    display:flex;align-items:center;justify-content:space-between;
-    padding:16px 26px;
-  }
-  .brand{display:flex;align-items:center;gap:12px}
-  .wing{width:26px;height:26px;flex:0 0 auto}
-  .wm{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.24em;font-size:16px}
-  .wm .s{opacity:.72;font-weight:400;letter-spacing:.16em;margin-left:10px;font-size:13px}
-  .signout{font-size:13px;color:#f4f1e9;opacity:.8}
-  .signout:hover{opacity:1;text-decoration:underline}
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 32px 80px; }
+  main.hidden { display: none; }
+  .page-title { font-size: 28px; font-weight: 700; margin: 0 0 4px 0; }
+  .page-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 22px 0; }
 
-  /* ---- pipeline tabs ---- */
-  .pipe{
-    display:flex;align-items:stretch;gap:0;background:var(--card);
-    border-bottom:1px solid var(--line);padding:0 14px;overflow-x:auto;
-  }
-  .tab{
-    display:flex;align-items:center;gap:10px;padding:16px 18px;position:relative;
-    color:var(--dim);white-space:nowrap;border-bottom:3px solid transparent;
-    transition:color .15s,border-color .15s;
-  }
-  .tab:hover{color:var(--ink)}
-  .tab.active{color:var(--olive);border-bottom-color:var(--olive)}
-  .tab .tnum{
-    font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;
-    width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
-    background:var(--olive-soft);color:var(--olive);
-  }
-  .tab.active .tnum{background:var(--olive);color:#fff}
-  .tab .tlabel{font-family:'Oswald',sans-serif;font-weight:500;letter-spacing:.06em;font-size:15px;text-transform:uppercase}
-  .tab .tcount{
-    font-size:12px;font-weight:600;color:var(--faint);
-    background:var(--card-2);border:1px solid var(--line);border-radius:100px;padding:1px 8px;
-  }
-  .tab.active .tcount{color:var(--olive);border-color:var(--olive)}
-  .chev{display:grid;place-items:center;color:var(--faint);padding:0 2px}
-  .branch-sep{flex:0 0 auto;width:1px;background:var(--line);margin:12px 8px}
-  .tab.branch .tlabel{text-transform:uppercase}
-  .tab.branch.active{color:var(--kraft);border-bottom-color:var(--kraft)}
-  .tab.branch.active .tnum{background:var(--kraft)}
-  .tab.branch.active .tcount{color:var(--kraft);border-color:var(--kraft)}
+  /* pipeline tabs */
+  .pipe { display: flex; align-items: stretch; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; }
+  .tab { display: flex; align-items: center; gap: 9px; padding: 13px 16px; color: var(--text-dim); white-space: nowrap; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; font-family: inherit; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .tnum { font-size: 11px; font-weight: 700; width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); color: var(--text-dim); }
+  .tab.active .tnum { background: var(--accent); color: #fff; }
+  .tab .tlabel { font-size: 14px; font-weight: 600; }
+  .tab .tcount { font-size: 11px; font-weight: 600; color: var(--text-dim); background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+  .tab.active .tcount { color: var(--accent); border-color: var(--accent); }
+  .chev { display: grid; place-items: center; color: var(--border); padding: 0 2px; }
+  .branch-sep { flex: 0 0 auto; width: 1px; background: var(--border); margin: 10px 10px; }
+  .tab.branch.active { color: var(--purple); border-bottom-color: var(--purple); }
+  .tab.branch.active .tnum { background: var(--purple); }
+  .tab.branch.active .tcount { color: var(--purple); border-color: var(--purple); }
 
-  .wrap{max-width:860px;margin:0 auto;padding:30px 22px 90px}
+  .vhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+  .vhead h2 { font-size: 20px; font-weight: 700; margin: 0; }
+  .vhead .hint { color: var(--text-dim); font-size: 13px; margin: 4px 0 0; max-width: 62ch; }
 
-  /* ---- list heading + add ---- */
-  .vhead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:8px}
-  .vhead h2{font-family:'Oswald',sans-serif;font-weight:600;font-size:22px;letter-spacing:.02em;margin:0;text-transform:uppercase}
-  .vhead .hint{color:var(--dim);font-size:13.5px;margin:4px 0 0}
-  .addbtn{
-    background:var(--olive);color:#fff;border-radius:9px;padding:9px 15px;
-    font-weight:600;font-size:14px;flex:0 0 auto;transition:filter .15s;
-  }
-  .addbtn:hover{filter:brightness(1.08)}
-  .addbtn.ghost{background:transparent;color:var(--olive);border:1px solid var(--olive)}
+  .btn { padding: 8px 15px; border-radius: var(--radius-sm); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); }
+  .btn:hover { background: #1f242c; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { opacity: .92; }
+  .btn.ghost { background: transparent; color: var(--text-dim); }
+  .btn.ghost:hover { color: var(--text); }
 
-  /* ---- group cards ---- */
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:18px}
-  .gcard{
-    text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:18px;transition:border-color .15s,transform .1s;display:flex;flex-direction:column;gap:12px;
-  }
-  .gcard:hover{border-color:var(--olive);transform:translateY(-1px)}
-  .gcard .gname{font-family:'Oswald',sans-serif;font-weight:600;font-size:17px;letter-spacing:.01em}
-  .gcard .gmeta{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--dim)}
-  .bar{height:6px;background:var(--card-2);border-radius:100px;overflow:hidden}
-  .bar > i{display:block;height:100%;background:var(--olive);width:0}
-  .gcard .go{font-size:13px;color:var(--olive);font-weight:600}
+  .back { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 14px; background: none; border: none; cursor: pointer; margin-bottom: 12px; font-family: inherit; }
+  .back:hover { color: var(--text); }
 
-  /* ---- detail ---- */
-  .back{display:inline-flex;align-items:center;gap:7px;color:var(--dim);font-size:14px;margin-bottom:14px}
-  .back:hover{color:var(--ink)}
-  .skulist{display:flex;flex-direction:column;gap:10px;margin-top:16px}
-  .sku{
-    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:15px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
-  }
-  .sku .slabel{font-weight:600;font-size:15px;flex:1;min-width:170px}
-  .sku .slabel .code{color:var(--faint);font-weight:500;font-size:13px}
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-top: 18px; }
+  .gcard { text-align: left; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 17px; cursor: pointer; display: flex; flex-direction: column; gap: 11px; }
+  .gcard:hover { border-color: var(--accent); }
+  .gcard .gname { font-size: 15px; font-weight: 600; }
+  .gcard .gmeta { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+  .gcard .go { color: var(--accent); font-weight: 600; }
+  .bar { height: 6px; background: var(--panel-2); border-radius: 999px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; }
 
-  .checks{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-  .chk{display:inline-flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
-  .box{
-    width:22px;height:22px;border:2px solid var(--line);border-radius:6px;flex:0 0 auto;
-    display:grid;place-items:center;background:var(--card);transition:all .12s;
-  }
-  .chk:hover .box{border-color:var(--olive)}
-  .box svg{width:13px;height:13px;opacity:0;transform:scale(.6);transition:all .12s}
-  .chk[aria-checked="true"] .box{background:var(--olive);border-color:var(--olive)}
-  .chk[aria-checked="true"] .box svg{opacity:1;transform:scale(1)}
-  .chk .ctext{font-size:14px;color:var(--dim)}
-  .chk[aria-checked="true"] .ctext{color:var(--ink);font-weight:600}
+  .skulist { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
+  .sku { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .sku .slabel { font-weight: 600; font-size: 14px; flex: 1; min-width: 160px; }
+  .sku .slabel .code { display: block; color: var(--text-dim); font-weight: 500; font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 
-  .single-chk .ctext{font-size:14.5px}
+  .checks { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .chk { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .chk.ro { cursor: default; }
+  .box { width: 20px; height: 20px; border: 2px solid var(--border); border-radius: 5px; flex: 0 0 auto; display: grid; place-items: center; background: var(--bg); transition: all .12s; }
+  .chk:not(.ro):hover .box { border-color: var(--accent); }
+  .box svg { width: 12px; height: 12px; opacity: 0; }
+  .chk[aria-checked="true"] .box { background: var(--accent); border-color: var(--accent); }
+  .chk[aria-checked="true"] .box svg { opacity: 1; }
+  .chk .ctext { font-size: 13px; color: var(--text-dim); }
+  .chk[aria-checked="true"] .ctext { color: var(--text); font-weight: 600; }
+  .single-chk .ctext { font-size: 13.5px; }
 
-  .miniprog{font-size:12px;font-weight:700;color:var(--kraft);font-family:'Oswald',sans-serif;letter-spacing:.04em}
-  .livebadge{
-    font-family:'Oswald',sans-serif;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--live);background:var(--olive-soft);border-radius:100px;padding:4px 12px;flex:0 0 auto;
-  }
-  .rowtools{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
-  .tbtn{color:var(--faint);border:1px solid transparent;border-radius:7px;padding:5px 9px;font-size:12px;font-weight:600}
-  .tbtn:hover{color:var(--ink);border-color:var(--line);background:var(--card-2)}
-  .tbtn.del:hover{color:#b5543f;border-color:#e3c3bc}
-  .tbtn.sell:hover{color:var(--olive);border-color:var(--olive)}
-  .tbtn.nogo:hover{color:var(--kraft);border-color:var(--kraft)}
-  .livebadge.nogo-badge{color:var(--kraft);background:var(--kraft-soft)}
-  .slabel .code{display:block;color:var(--faint);font-weight:500;font-size:12px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .miniprog { font-size: 12px; font-weight: 700; color: var(--yellow); font-variant-numeric: tabular-nums; }
+  .livebadge { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--green); background: rgba(74,222,128,.14); border-radius: 999px; padding: 4px 11px; flex: 0 0 auto; }
+  .livebadge.nogo-badge { color: var(--purple); background: rgba(167,139,250,.14); }
 
-  /* ---- add form ---- */
-  .form{
-    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-    padding:18px;margin-top:16px;display:flex;flex-direction:column;gap:12px;
-  }
-  .form label{font-size:13px;font-weight:600;color:var(--dim)}
-  .inp{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:11px 13px;font-size:14px;color:var(--ink);outline:none}
-  .inp:focus{border-color:var(--olive)}
-  textarea.inp{resize:vertical;min-height:92px;line-height:1.6}
-  .form .frow{display:flex;gap:10px;justify-content:flex-end}
-  .btn{background:var(--olive);color:#fff;border-radius:9px;padding:10px 18px;font-weight:600;font-size:14px}
-  .btn:hover{filter:brightness(1.08)}
-  .btn.sec{background:transparent;color:var(--dim);border:1px solid var(--line)}
-  .btn.sec:hover{color:var(--ink);filter:none}
+  .rowtools { display: flex; gap: 6px; margin-left: auto; flex: 0 0 auto; flex-wrap: wrap; }
+  .tbtn { color: var(--text-dim); border: 1px solid transparent; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 600; background: none; cursor: pointer; font-family: inherit; }
+  .tbtn:hover { color: var(--text); border-color: var(--border); background: var(--panel-2); }
+  .tbtn.sell:hover { color: var(--green); border-color: var(--green); }
+  .tbtn.nogo:hover { color: var(--purple); border-color: var(--purple); }
+  .tbtn.del:hover { color: var(--red); border-color: var(--red); }
 
-  .empty{text-align:center;color:var(--dim);padding:52px 20px;border:1px dashed var(--line);border-radius:var(--radius);margin-top:18px}
-  .empty p{margin:0 0 16px;font-size:14px}
+  .form { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .form label { font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .inp { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 14px; color: var(--text); outline: none; font-family: inherit; }
+  .inp:focus { border-color: var(--accent); }
+  textarea.inp { resize: vertical; min-height: 92px; line-height: 1.6; }
+  .form .frow { display: flex; gap: 10px; justify-content: flex-end; }
 
-  /* ---- login ---- */
-  .login{min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--olive)}
-  .lcard{width:100%;max-width:360px;background:var(--card);border-radius:16px;padding:40px 34px;text-align:center}
-  .lcard .wing{width:46px;height:46px;margin:0 auto 16px}
-  .lcard h1{font-family:'Oswald',sans-serif;font-size:19px;letter-spacing:.2em;margin:0 0 4px}
-  .lcard p{color:var(--dim);font-size:13px;margin:0 0 26px}
-  .lcard .inp{margin-bottom:12px;text-align:center}
-  .lerr{color:#b5543f;font-size:13px;min-height:18px;margin-top:12px}
+  .empty { text-align: center; color: var(--text-dim); padding: 54px 20px; border: 1px dashed var(--border); border-radius: var(--radius); margin-top: 18px; }
+  .empty p { margin: 0; font-size: 14px; }
 
-  .cfg{background:var(--kraft-soft);border:1px solid var(--kraft);border-radius:10px;padding:14px 16px;font-size:13px;margin-bottom:20px}
-  .cfg code{background:var(--card);padding:1px 6px;border-radius:5px;color:var(--kraft)}
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(16px); background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 11px 20px; border-radius: 999px; font-size: 14px; font-weight: 600; opacity: 0; pointer-events: none; transition: all .2s; z-index: 100; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#f4f1e9;padding:11px 20px;border-radius:100px;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transition:all .2s;z-index:30}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-
-  @media (max-width:560px){
-    .head{padding:14px 16px}.wm .s{display:none}
-    .checks{width:100%;gap:12px}
-    .rowtools{margin-left:0}
-  }
-  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
+  @media (max-width: 560px) { .checks { width: 100%; } .rowtools { margin-left: 0; } }
 </style>
 </head>
 <body>
 
-<!-- ===== LOGIN ===== -->
-<div id="login" class="login">
-  <div class="lcard">
-    <svg class="wing" viewBox="0 0 100 100"><path d="M50 20 C40 40 20 46 8 48 C24 52 40 58 50 80 C60 58 76 52 92 48 C80 46 60 40 50 20 Z" fill="#4a6330"/></svg>
-    <h1>BURLEBO</h1>
-    <p>Launch Pipeline</p>
-    <input id="pw" class="inp" type="password" placeholder="Password" />
-    <button class="btn" style="width:100%" onclick="doLogin()">Sign in</button>
-    <div id="lerr" class="lerr"></div>
-  </div>
-</div>
+<header id="app-header" style="display:none;">
+  <h1>Burlebo Analytics</h1>
+  <nav id="main-nav">
+    <span class="role-pill" id="role-pill"></span>
+  </nav>
+</header>
 
-<!-- ===== APP ===== -->
-<div id="app" class="hidden">
-  <div class="head">
-    <div class="brand">
-      <svg class="wing" viewBox="0 0 100 100"><path d="M50 20 C40 40 20 46 8 48 C24 52 40 58 50 80 C60 58 76 52 92 48 C80 46 60 40 50 20 Z" fill="#f4f1e9"/></svg>
-      <div class="wm">BURLEBO<span class="s">LAUNCH PIPELINE</span></div>
-    </div>
-    <button class="signout" onclick="signOut()">Sign out</button>
-  </div>
+<main id="app-main" class="hidden">
+  <div class="page-title">Product Launch Tracker</div>
+  <div class="page-sub">Move each SKU through the pipeline: added &amp; closed on Amazon → A+, inventory &amp; launch synced → live and selling.</div>
 
   <div class="pipe" id="pipe"></div>
-
-  <div class="wrap">
-    <div id="cfg" class="cfg hidden">Backend not connected — paste your Supabase <code>anon key</code> into the <code>CONFIG</code> block at the top of this file, then commit.</div>
-    <div id="view"></div>
-  </div>
-</div>
+  <div id="view"></div>
+</main>
 
 <div id="toast" class="toast"></div>
 
 <script>
-/* ============================================================
-   CONFIG — the only thing to edit before committing
-   ============================================================ */
-const CONFIG = {
-  SUPABASE_URL: "https://uoetojuyzyngfopsmmxk.supabase.co",
-  SUPABASE_ANON_KEY: "PASTE_ANON_KEY_HERE",   // copy from your old index.html (next to createClient)
-  PASSWORD: "Burlebo49!",                       // change to whatever you want
-  TABLE: "launch_skus"
-};
-/* ============================================================ */
+  // ============================================================================
+  // Shared nav loader (identical to other pages)
+  // ============================================================================
+  async function loadSharedNav() {
+    try {
+      const r = await fetch('/nav.html', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const html = await r.text();
+      const nav = document.getElementById('main-nav');
+      const pill = document.getElementById('role-pill');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const here = window.location.pathname.replace(/\/$/, '') || '/';
+      for (const a of tmp.querySelectorAll('a')) {
+        const href = a.getAttribute('href');
+        if (href === here || (href === '/' && here === '/')) a.classList.add('active');
+        nav.insertBefore(a, pill);
+      }
+    } catch (err) { console.error('Nav load failed:', err); }
+  }
 
-const STAGES = [
-  { key:"groups",  label:"Product Groups",         hint:"Click a group to see its SKUs. Check a SKU once it's added to Amazon with images and closed — it moves to the next stage." },
-  { key:"closed",  label:"Closed — Ready",         hint:"Sync A+, sync inventory, and launch. When all three are checked, the SKU moves to Currently Selling." },
-  { key:"selling", label:"Currently Selling",      hint:"Live on Amazon." }
-];
-const BRANCH = { key:"blb_only", label:"BURLEBO Selling · Amazon Not", hint:"Selling on burlebo.com but intentionally not listed on Amazon." };
-const stageDef = k => STAGES.concat([BRANCH]).find(s=>s.key===k);
+  const SUPABASE_URL = 'https://uoetojuyzyngfopsmmxk.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZXRvanV5enluZ2ZvcHNtbXhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODY3ODIsImV4cCI6MjA5NDk2Mjc4Mn0.FVhs_0waTWIYkTVY2j4HERhlovggIFau07RuBu69M8E';
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const TABLE = 'launch_skus';
 
-const FIELDS = [
-  { key:"aplus_synced",     label:"A+ Content Synced" },
-  { key:"inventory_synced", label:"Inventory Synced" },
-  { key:"launched_live",    label:"Launched and Live" }
-];
+  window.onAuthReady = function () {
+    EDIT = !(window.AuthApp && window.AuthApp.isViewOnly());
+    loadSharedNav();
+    loadSkus();
+    sb.channel('pipe').on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, loadSkus).subscribe();
+  };
 
-let sb=null, skus=[], authed=false;
-let state = { tab:"groups", group:null, addingGroup:false };
+  // ============================================================================
+  // Pipeline
+  // ============================================================================
+  const STAGES = [
+    { key:"groups",  label:"Product Groups",    hint:"Click a group to see its SKUs. Check a SKU once it's added to Amazon with images and closed — it moves to the next stage." },
+    { key:"closed",  label:"Closed — Ready",    hint:"Sync A+, sync inventory, and launch. When all three are checked, the SKU moves to Currently Selling." },
+    { key:"selling", label:"Currently Selling", hint:"Live on Amazon." }
+  ];
+  const BRANCH = { key:"blb_only", label:"BURLEBO Selling · Amazon Not", hint:"Selling on burlebo.com but intentionally not listed on Amazon." };
+  const stageDef = k => STAGES.concat([BRANCH]).find(s => s.key === k);
+  const FIELDS = [
+    { key:"aplus_synced",     label:"A+ Content Synced" },
+    { key:"inventory_synced", label:"Inventory Synced" },
+    { key:"launched_live",    label:"Launched and Live" }
+  ];
 
-const $ = id => document.getElementById(id);
-const configOK = () => CONFIG.SUPABASE_ANON_KEY && CONFIG.SUPABASE_ANON_KEY !== "PASTE_ANON_KEY_HERE";
-if (configOK()) sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  let skus = [], EDIT = true;
+  let state = { tab:"groups", group:null, adding:false };
 
-const CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const CHECK = `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-/* ---- auth ---- */
-function doLogin(){
-  if ($("pw").value === CONFIG.PASSWORD){ authed=true; $("login").classList.add("hidden"); $("app").classList.remove("hidden"); boot(); }
-  else $("lerr").textContent = "That password didn't match.";
-}
-$("pw").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
-function signOut(){ authed=false; skus=[]; $("pw").value=""; $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
+  async function loadSkus() {
+    const { data, error } = await sb.from(TABLE).select('*').order('sort_order', { ascending: true });
+    if (error) { toast('Couldn\u2019t load'); console.error(error); return; }
+    skus = data || [];
+    render();
+  }
+  async function patch(id, fields) {
+    fields.updated_at = new Date().toISOString();
+    const { error } = await sb.from(TABLE).update(fields).eq('id', id);
+    if (error) { toast('Update failed'); console.error(error); }
+  }
+  async function addSkus(group, names) {
+    const base = skus.length ? Math.max(...skus.map(s => s.sort_order||0)) + 1 : 0;
+    const rows = names.map((sku,i) => ({ group_name:group, sku, stage:'groups', sort_order:base+i,
+      added_closed:false, aplus_synced:false, inventory_synced:false, launched_live:false }));
+    const { error } = await sb.from(TABLE).insert(rows);
+    if (error) { toast('Add failed'); console.error(error); return; }
+    toast(rows.length>1 ? `${rows.length} SKUs added` : 'SKU added');
+  }
+  async function delSku(id) { const { error } = await sb.from(TABLE).delete().eq('id', id); if (!error) toast('SKU removed'); }
+  async function delGroup(group) {
+    if (!confirm(`Remove all "${group}" SKUs in this stage?`)) return;
+    const ids = skus.filter(s => s.group_name===group && s.stage===state.tab).map(s => s.id);
+    const { error } = await sb.from(TABLE).delete().in('id', ids);
+    if (!error) { toast('Group removed'); state.group=null; }
+  }
+  function moveClosed(id)  { patch(id, { added_closed:true, stage:'closed' }); toast('Moved to Closed — Ready'); }
+  function moveSelling(id) { patch(id, { stage:'selling', added_closed:true, aplus_synced:true, inventory_synced:true, launched_live:true }); toast('Moved to Currently Selling'); }
+  function moveBlb(id)     { patch(id, { stage:'blb_only' }); toast('Parked in BURLEBO Selling · Amazon Not'); }
+  function toggleField(s, field) {
+    const flags = { aplus_synced:s.aplus_synced, inventory_synced:s.inventory_synced, launched_live:s.launched_live };
+    flags[field] = !s[field];
+    const all = flags.aplus_synced && flags.inventory_synced && flags.launched_live;
+    const fields = { [field]: !s[field] };
+    if (all) { fields.stage = 'selling'; toast('Now Currently Selling'); }
+    patch(s.id, fields);
+  }
+  function revert(id, to) {
+    if (to === 'groups') patch(id, { stage:'groups', added_closed:false, aplus_synced:false, inventory_synced:false, launched_live:false });
+    else patch(id, { stage:'closed', launched_live:false });
+    toast('Moved back');
+  }
+  async function renameGroup(oldName) {
+    const nn = prompt('Rename product group (matching names merge together):', oldName);
+    if (nn === null) return;
+    const name = nn.trim();
+    if (!name || name === oldName) return;
+    const ids = skus.filter(s => s.group_name===oldName).map(s => s.id);
+    const { error } = await sb.from(TABLE).update({ group_name:name }).in('id', ids);
+    if (error) { toast('Rename failed'); return; }
+    state.group = name; toast('Group renamed');
+  }
 
-function boot(){
-  if (!configOK()){ $("cfg").classList.remove("hidden"); renderPipe(); return; }
-  loadSkus();
-  sb.channel("pipe").on("postgres_changes",{event:"*",schema:"public",table:CONFIG.TABLE}, loadSkus).subscribe();
-}
+  const inStage = stage => skus.filter(s => s.stage === stage);
+  const groupsIn = stage => [...new Set(inStage(stage).map(s => s.group_name))].sort((a,b) => a.localeCompare(b));
 
-/* ---- data ---- */
-async function loadSkus(){
-  const { data, error } = await sb.from(CONFIG.TABLE).select("*").order("sort_order",{ascending:true});
-  if (error){ toast("Couldn't load"); console.error(error); return; }
-  skus = data || [];
-  render();
-}
-async function patch(id, fields){
-  fields.updated_at = new Date().toISOString();
-  const { error } = await sb.from(CONFIG.TABLE).update(fields).eq("id", id);
-  if (error){ toast("Update failed"); console.error(error); }
-}
-async function addSkus(group, names){
-  const base = skus.length ? Math.max(...skus.map(s=>s.sort_order||0))+1 : 0;
-  const rows = names.map((sku,i)=>({ group_name:group, sku, stage:"groups", sort_order:base+i,
-    added_closed:false, aplus_synced:false, inventory_synced:false, launched_live:false }));
-  const { error } = await sb.from(CONFIG.TABLE).insert(rows);
-  if (error){ toast("Add failed"); console.error(error); return; }
-  toast(rows.length>1 ? `${rows.length} SKUs added` : "SKU added");
-}
-async function delSku(id){ const {error}=await sb.from(CONFIG.TABLE).delete().eq("id",id); if(!error) toast("SKU removed"); }
-async function delGroup(group,stage){
-  if(!confirm(`Remove all "${group}" SKUs in this stage?`)) return;
-  const ids = skus.filter(s=>s.group_name===group && s.stage===stage).map(s=>s.id);
-  const {error}=await sb.from(CONFIG.TABLE).delete().in("id",ids);
-  if(!error){ toast("Group removed"); state.group=null; }
-}
+  function render() { renderPipe(); renderView(); }
 
-/* ---- movement ---- */
-function moveClosed(id){ patch(id,{ added_closed:true, stage:"closed" }); toast("Moved to Closed — Ready"); }
-function moveSelling(id){ patch(id,{ stage:"selling", added_closed:true, aplus_synced:true, inventory_synced:true, launched_live:true }); toast("Moved to Currently Selling"); }
-function moveBlb(id){ patch(id,{ stage:"blb_only" }); toast("Parked in BURLEBO Selling · Amazon Not"); }
-async function renameGroup(oldName){
-  const nn = prompt("Rename product group (matching names merge together):", oldName);
-  if (nn===null) return;
-  const name = nn.trim();
-  if (!name || name===oldName) return;
-  const ids = skus.filter(s=>s.group_name===oldName).map(s=>s.id);
-  const { error } = await sb.from(CONFIG.TABLE).update({ group_name:name }).in("id", ids);
-  if (error){ toast("Rename failed"); console.error(error); return; }
-  state.group = name; toast("Group renamed");
-}
-function toggleField(s, field){
-  const next = !s[field];
-  const flags = { aplus_synced:s.aplus_synced, inventory_synced:s.inventory_synced, launched_live:s.launched_live };
-  flags[field] = next;
-  const all = flags.aplus_synced && flags.inventory_synced && flags.launched_live;
-  const fields = { [field]: next };
-  if (all){ fields.stage="selling"; toast("Now Currently Selling"); }
-  patch(s.id, fields);
-}
-function revert(id, to){
-  if (to==="groups") patch(id,{ stage:"groups", added_closed:false, aplus_synced:false, inventory_synced:false, launched_live:false });
-  else patch(id,{ stage:"closed", launched_live:false });
-  toast("Moved back");
-}
-
-/* ---- helpers ---- */
-const inStage = stage => skus.filter(s=>s.stage===stage);
-const groupsIn = stage => [...new Set(inStage(stage).map(s=>s.group_name))].sort((a,b)=>a.localeCompare(b));
-
-/* ---- render ---- */
-function render(){ renderPipe(); renderView(); }
-
-function renderPipe(){
-  const linear = STAGES.map((st,i)=>{
-    const n = inStage(st.key).length, active = state.tab===st.key;
-    return `${i>0?`<span class="chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>`:""}
-      <button class="tab ${active?'active':''}" data-act="tab" data-tab="${st.key}">
-        <span class="tnum">${i+1}</span><span class="tlabel">${st.label}</span><span class="tcount">${n}</span>
+  function renderPipe() {
+    const linear = STAGES.map((st,i) => {
+      const n = inStage(st.key).length, active = state.tab===st.key;
+      return `${i>0?`<span class="chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>`:''}
+        <button class="tab ${active?'active':''}" data-act="tab" data-tab="${st.key}">
+          <span class="tnum">${i+1}</span><span class="tlabel">${st.label}</span><span class="tcount">${n}</span>
+        </button>`;
+    }).join('');
+    const bn = inStage(BRANCH.key).length, ba = state.tab===BRANCH.key;
+    const branch = `<span class="branch-sep"></span>
+      <button class="tab branch ${ba?'active':''}" data-act="tab" data-tab="${BRANCH.key}">
+        <span class="tlabel">${BRANCH.label}</span><span class="tcount">${bn}</span>
       </button>`;
-  }).join("");
-  const bn = inStage(BRANCH.key).length, ba = state.tab===BRANCH.key;
-  const branch = `<span class="branch-sep"></span>
-    <button class="tab branch ${ba?'active':''}" data-act="tab" data-tab="${BRANCH.key}">
-      <span class="tlabel">${BRANCH.label}</span><span class="tcount">${bn}</span>
-    </button>`;
-  $("pipe").innerHTML = linear + branch;
-}
-
-function renderView(){
-  if (!configOK()){ $("view").innerHTML = `<div class="empty"><p>Connect the backend to load your pipeline.</p></div>`; return; }
-  if (state.group) renderDetail();
-  else renderGroupList();
-}
-
-function renderGroupList(){
-  const st = stageDef(state.tab);
-  const gs = groupsIn(state.tab);
-  const canAdd = state.tab==="groups";
-
-  let html = `<div class="vhead"><div>
-      <h2>${st.label}</h2><p class="hint">${st.hint}</p>
-    </div>${canAdd?`<button class="addbtn" data-act="addgroup-open">+ New group</button>`:""}</div>`;
-
-  if (canAdd && state.addingGroup){
-    html += `<div class="form">
-      <div><label>Product group name</label><input id="fGroup" class="inp" placeholder="e.g. Performance Hoodie" /></div>
-      <div><label>SKUs — one per line</label><textarea id="fSkus" class="inp" placeholder="Classic Deer Camo — S&#10;Classic Deer Camo — M&#10;Classic Deer Camo — L"></textarea></div>
-      <div class="frow"><button class="btn sec" data-act="addgroup-cancel">Cancel</button><button class="btn" data-act="addgroup-save">Add group</button></div>
-    </div>`;
+    $('pipe').innerHTML = linear + branch;
   }
 
-  if (!gs.length){
-    html += `<div class="empty"><p>${
-      state.tab==="groups" ? "No product groups yet. Add your first one to start the pipeline." :
-      state.tab==="closed" ? "Nothing here yet. SKUs arrive once they're added to Amazon and closed." :
-      state.tab==="selling" ? "Nothing live yet. SKUs arrive once A+, inventory, and launch are all checked." :
-      "Nothing here. Use \u201CNot going to sell\u201D on a product to park it here."
-    }</p></div>`;
-  } else {
-    html += `<div class="grid">` + gs.map(g=>{
-      const rows = skus.filter(s=>s.group_name===g && s.stage===state.tab);
-      let sub="", pct=0;
-      if (state.tab==="closed"){
-        const total = rows.length*3;
-        const done = rows.reduce((a,s)=>a+(s.aplus_synced?1:0)+(s.inventory_synced?1:0)+(s.launched_live?1:0),0);
-        pct = total? done/total*100:0; sub=`${rows.length} SKU${rows.length!=1?'s':''}`;
-      } else { sub=`${rows.length} SKU${rows.length!=1?'s':''}`; pct = state.tab==="selling"?100:0; }
-      return `<button class="gcard" data-act="open" data-group="${esc(g)}">
-        <div class="gname">${esc(g)}</div>
-        <div class="gmeta"><span>${sub}</span><span class="go">Open →</span></div>
-        ${state.tab==="closed"?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}
-      </button>`;
-    }).join("") + `</div>`;
-  }
-  $("view").innerHTML = html;
-}
+  function renderView() { if (state.group) renderDetail(); else renderGroupList(); }
 
-function renderDetail(){
-  const g = state.group, tab = state.tab;
-  const rows = skus.filter(s=>s.group_name===g && s.stage===tab);
-  if (!rows.length){ state.group=null; return renderView(); }
+  function renderGroupList() {
+    const st = stageDef(state.tab);
+    const gs = groupsIn(state.tab);
+    const canAdd = state.tab==='groups' && EDIT;
 
-  let html = `<button class="back" data-act="back">← All groups</button>
-    <div class="vhead"><div><h2>${esc(g)}</h2>
-    <p class="hint">${stageDef(tab).hint}</p></div>
-    ${tab==="groups"?`<div style="display:flex;gap:8px"><button class="addbtn ghost" data-act="rename" data-group="${esc(g)}">Rename</button><button class="addbtn ghost" data-act="addskus-open">+ Add SKUs</button></div>`:""}</div>`;
+    let html = `<div class="vhead"><div><h2>${st.label}</h2><p class="hint">${st.hint}</p></div>
+      ${canAdd?`<button class="btn primary" data-act="addgroup-open">+ New group</button>`:''}</div>`;
 
-  if (tab==="groups" && state.addingGroup){
-    html += `<div class="form">
-      <div><label>Add SKUs to ${esc(g)} — one per line</label><textarea id="fSkus" class="inp" placeholder="Classic Deer Camo — XL&#10;Timber Green — M"></textarea></div>
-      <div class="frow"><button class="btn sec" data-act="addskus-cancel">Cancel</button><button class="btn" data-act="addskus-save">Add SKUs</button></div>
-    </div>`;
-  }
-
-  html += `<div class="skulist">` + rows.map(s=>{
-    const label = `<div class="slabel">${esc(s.sku)}${s.upc?`<span class="code">${esc(s.upc)}</span>`:""}</div>`;
-    if (tab==="groups"){
-      return `<div class="sku">${label}
-        <div class="checks"><span class="chk single-chk" role="checkbox" tabindex="0" aria-checked="false" data-act="move" data-id="${s.id}">
-          <span class="box">${CHECK_SVG}</span>
-          <span class="ctext">Added to Amazon inventory with images and closed</span>
-        </span></div>
-        <div class="rowtools">
-          <button class="tbtn sell" data-act="sell" data-id="${s.id}">Live &amp; selling →</button>
-          <button class="tbtn nogo" data-act="blbonly" data-id="${s.id}">Not going to sell</button>
-          <button class="tbtn del" data-act="del" data-id="${s.id}">Delete</button>
-        </div>
+    if (canAdd && state.adding) {
+      html += `<div class="form">
+        <div><label>Product group name</label><input id="fGroup" class="inp" placeholder="e.g. Performance Hoodie"></div>
+        <div><label>SKUs — one per line</label><textarea id="fSkus" class="inp" placeholder="Classic Deer Camo · S&#10;Classic Deer Camo · M"></textarea></div>
+        <div class="frow"><button class="btn ghost" data-act="addgroup-cancel">Cancel</button><button class="btn primary" data-act="addgroup-save">Add group</button></div>
       </div>`;
     }
-    if (tab==="closed"){
-      const done=(s.aplus_synced?1:0)+(s.inventory_synced?1:0)+(s.launched_live?1:0);
-      const checks = FIELDS.map(f=>`<span class="chk" role="checkbox" tabindex="0" aria-checked="${s[f.key]?'true':'false'}" data-act="toggle" data-id="${s.id}" data-field="${f.key}">
-          <span class="box">${CHECK_SVG}</span><span class="ctext">${f.label}</span></span>`).join("");
-      return `<div class="sku">${label}
-        <div class="checks">${checks}</div>
-        <span class="miniprog">${done}/3</span>
-        <div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="groups">↩ Back</button></div>
+
+    if (!gs.length) {
+      html += `<div class="empty"><p>${
+        state.tab==='groups' ? 'No product groups yet. Add your first one to start the pipeline.' :
+        state.tab==='closed' ? 'Nothing here yet. SKUs arrive once they\u2019re added to Amazon and closed.' :
+        state.tab==='selling' ? 'Nothing live yet. SKUs arrive once A+, inventory, and launch are all checked.' :
+        'Nothing here. Use \u201CNot going to sell\u201D on a product to park it here.'
+      }</p></div>`;
+    } else {
+      html += `<div class="grid">` + gs.map(g => {
+        const rows = skus.filter(s => s.group_name===g && s.stage===state.tab);
+        let pct = 0;
+        if (state.tab==='closed') {
+          const total = rows.length*3;
+          const done = rows.reduce((a,s)=>a+(s.aplus_synced?1:0)+(s.inventory_synced?1:0)+(s.launched_live?1:0),0);
+          pct = total ? done/total*100 : 0;
+        }
+        return `<button class="gcard" data-act="open" data-group="${esc(g)}">
+          <div class="gname">${esc(g)}</div>
+          <div class="gmeta"><span>${rows.length} SKU${rows.length!=1?'s':''}</span><span class="go">Open →</span></div>
+          ${state.tab==='closed'?`<div class="bar"><i style="width:${pct}%"></i></div>`:''}
+        </button>`;
+      }).join('') + `</div>`;
+    }
+    $('view').innerHTML = html;
+  }
+
+  function renderDetail() {
+    const g = state.group, tab = state.tab;
+    const rows = skus.filter(s => s.group_name===g && s.stage===tab);
+    if (!rows.length) { state.group=null; return renderView(); }
+
+    let html = `<button class="back" data-act="back">← All groups</button>
+      <div class="vhead"><div><h2>${esc(g)}</h2><p class="hint">${stageDef(tab).hint}</p></div>
+      ${(tab==='groups'&&EDIT)?`<div style="display:flex;gap:8px"><button class="btn ghost" data-act="rename" data-group="${esc(g)}">Rename</button><button class="btn" data-act="addskus-open">+ Add SKUs</button></div>`:''}</div>`;
+
+    if (tab==='groups' && EDIT && state.adding) {
+      html += `<div class="form">
+        <div><label>Add SKUs to ${esc(g)} — one per line</label><textarea id="fSkus" class="inp" placeholder="Timber Green · M&#10;Timber Green · L"></textarea></div>
+        <div class="frow"><button class="btn ghost" data-act="addskus-cancel">Cancel</button><button class="btn primary" data-act="addskus-save">Add SKUs</button></div>
       </div>`;
     }
-    if (tab==="selling"){
-      return `<div class="sku">${label}
-        <span class="livebadge">● Live</span>
-        <div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="closed">↩ Back to Ready</button></div>
-      </div>`;
+
+    html += `<div class="skulist">` + rows.map(s => {
+      const label = `<div class="slabel">${esc(s.sku)}${s.upc?`<span class="code">${esc(s.upc)}</span>`:''}</div>`;
+      const ro = EDIT ? '' : ' ro';
+
+      if (tab==='groups') {
+        const tools = EDIT ? `<div class="rowtools">
+            <button class="tbtn sell" data-act="sell" data-id="${s.id}">Live &amp; selling →</button>
+            <button class="tbtn nogo" data-act="blbonly" data-id="${s.id}">Not going to sell</button>
+            <button class="tbtn del" data-act="del" data-id="${s.id}">Delete</button>
+          </div>` : '';
+        return `<div class="sku">${label}
+          <div class="checks"><span class="chk single-chk${ro}" role="checkbox" tabindex="0" aria-checked="false" ${EDIT?`data-act="move" data-id="${s.id}"`:''}>
+            <span class="box">${CHECK}</span><span class="ctext">Added to Amazon inventory with images and closed</span>
+          </span></div>${tools}</div>`;
+      }
+      if (tab==='closed') {
+        const done = (s.aplus_synced?1:0)+(s.inventory_synced?1:0)+(s.launched_live?1:0);
+        const checks = FIELDS.map(f => `<span class="chk${ro}" role="checkbox" tabindex="0" aria-checked="${s[f.key]?'true':'false'}" ${EDIT?`data-act="toggle" data-id="${s.id}" data-field="${f.key}"`:''}>
+            <span class="box">${CHECK}</span><span class="ctext">${f.label}</span></span>`).join('');
+        return `<div class="sku">${label}<div class="checks">${checks}</div><span class="miniprog">${done}/3</span>
+          ${EDIT?`<div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="groups">↩ Back</button></div>`:''}</div>`;
+      }
+      if (tab==='selling') {
+        return `<div class="sku">${label}<span class="livebadge">● Live</span>
+          ${EDIT?`<div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="closed">↩ Back to Ready</button></div>`:''}</div>`;
+      }
+      return `<div class="sku">${label}<span class="livebadge nogo-badge">BURLEBO only</span>
+        ${EDIT?`<div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="groups">↩ Back to Products</button></div>`:''}</div>`;
+    }).join('') + `</div>`;
+
+    if (tab==='groups' && EDIT) {
+      html += `<div style="margin-top:20px"><button class="tbtn del" data-act="delgroup" data-group="${esc(g)}">Delete this group</button></div>`;
     }
-    // blb_only
-    return `<div class="sku">${label}
-      <span class="livebadge nogo-badge">BURLEBO only</span>
-      <div class="rowtools"><button class="tbtn" data-act="revert" data-id="${s.id}" data-to="groups">↩ Back to Products</button></div>
-    </div>`;
-  }).join("") + `</div>`;
-
-  if (tab==="groups"){
-    html += `<div style="margin-top:20px"><button class="tbtn del" data-act="delgroup" data-group="${esc(g)}">Delete this group</button></div>`;
+    $('view').innerHTML = html;
   }
-  $("view").innerHTML = html;
-}
 
-/* ---- events (delegated) ---- */
-$("app").addEventListener("click", e=>{
-  const el = e.target.closest("[data-act]"); if(!el) return;
-  handle(el.dataset.act, el);
-});
-$("app").addEventListener("keydown", e=>{
-  if (e.key!=="Enter" && e.key!==" ") return;
-  const el = e.target.closest('[role="checkbox"]'); if(!el) return;
-  e.preventDefault(); handle(el.dataset.act, el);
-});
+  // events (delegated)
+  document.getElementById('app-main').addEventListener('click', e => {
+    const el = e.target.closest('[data-act]'); if (!el) return;
+    handle(el.dataset.act, el);
+  });
+  document.getElementById('app-main').addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target.closest('[role="checkbox"][data-act]'); if (!el) return;
+    e.preventDefault(); handle(el.dataset.act, el);
+  });
 
-function handle(act, el){
-  const id = el.dataset.id ? Number(el.dataset.id) : null;
-  const s = id!=null ? skus.find(x=>x.id===id) : null;
-  switch(act){
-    case "tab": state.tab=el.dataset.tab; state.group=null; state.addingGroup=false; render(); break;
-    case "open": state.group=el.dataset.group; render(); break;
-    case "back": state.group=null; state.addingGroup=false; render(); break;
-    case "move": if(s) moveClosed(s.id); break;
-    case "sell": if(s) moveSelling(s.id); break;
-    case "blbonly": if(s) moveBlb(s.id); break;
-    case "rename": renameGroup(el.dataset.group); break;
-    case "toggle": if(s) toggleField(s, el.dataset.field); break;
-    case "revert": if(s) revert(s.id, el.dataset.to); break;
-    case "del": if(s) delSku(s.id); break;
-    case "delgroup": delGroup(el.dataset.group, "groups"); break;
-    case "addgroup-open": state.addingGroup=true; renderView(); $("fGroup")?.focus(); break;
-    case "addgroup-cancel": state.addingGroup=false; renderView(); break;
-    case "addgroup-save": saveNewGroup(); break;
-    case "addskus-open": state.addingGroup=true; renderView(); $("fSkus")?.focus(); break;
-    case "addskus-cancel": state.addingGroup=false; renderView(); break;
-    case "addskus-save": saveMoreSkus(); break;
+  function handle(act, el) {
+    const id = el.dataset.id ? Number(el.dataset.id) : null;
+    const s = id != null ? skus.find(x => x.id === id) : null;
+    switch (act) {
+      case 'tab': state.tab = el.dataset.tab; state.group = null; state.adding = false; render(); break;
+      case 'open': state.group = el.dataset.group; render(); break;
+      case 'back': state.group = null; state.adding = false; render(); break;
+      case 'move': if (s) moveClosed(s.id); break;
+      case 'sell': if (s) moveSelling(s.id); break;
+      case 'blbonly': if (s) moveBlb(s.id); break;
+      case 'toggle': if (s) toggleField(s, el.dataset.field); break;
+      case 'revert': if (s) revert(s.id, el.dataset.to); break;
+      case 'del': if (s) delSku(s.id); break;
+      case 'delgroup': delGroup(el.dataset.group); break;
+      case 'rename': renameGroup(el.dataset.group); break;
+      case 'addgroup-open': state.adding = true; renderView(); $('fGroup')?.focus(); break;
+      case 'addgroup-cancel': state.adding = false; renderView(); break;
+      case 'addgroup-save': saveNewGroup(); break;
+      case 'addskus-open': state.adding = true; renderView(); $('fSkus')?.focus(); break;
+      case 'addskus-cancel': state.adding = false; renderView(); break;
+      case 'addskus-save': saveMoreSkus(); break;
+    }
   }
-}
 
-function parseLines(v){ return (v||"").split("\n").map(x=>x.trim()).filter(Boolean); }
+  const parseLines = v => (v||'').split('\n').map(x => x.trim()).filter(Boolean);
+  async function saveNewGroup() {
+    const name = $('fGroup').value.trim(); const list = parseLines($('fSkus').value);
+    if (!name) { toast('Name the group first'); return; }
+    if (!list.length) { toast('Add at least one SKU'); return; }
+    state.adding = false; await addSkus(name, list);
+  }
+  async function saveMoreSkus() {
+    const list = parseLines($('fSkus').value);
+    if (!list.length) { toast('Add at least one SKU'); return; }
+    state.adding = false; await addSkus(state.group, list);
+  }
 
-async function saveNewGroup(){
-  const name = $("fGroup").value.trim();
-  const list = parseLines($("fSkus").value);
-  if (!name){ toast("Name the group first"); return; }
-  if (!list.length){ toast("Add at least one SKU"); return; }
-  state.addingGroup=false;
-  await addSkus(name, list);
-}
-async function saveMoreSkus(){
-  const list = parseLines($("fSkus").value);
-  if (!list.length){ toast("Add at least one SKU"); return; }
-  state.addingGroup=false;
-  await addSkus(state.group, list);
-}
-
-/* ---- toast ---- */
-let tT; function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(tT); tT=setTimeout(()=>t.classList.remove("show"),1800); }
+  let tT; function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tT); tT = setTimeout(() => t.classList.remove('show'), 1800); }
 </script>
 </body>
 </html>
