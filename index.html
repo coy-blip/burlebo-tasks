@@ -55,6 +55,14 @@
   .tab.branch.active { color: var(--purple); border-bottom-color: var(--purple); }
   .tab.branch.active .tnum { background: var(--purple); }
   .tab.branch.active .tcount { color: var(--purple); border-color: var(--purple); }
+  .tab.aplus.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab.aplus.active .tcount { color: var(--blue); border-color: var(--blue); }
+
+  .note { font-size: 12px; color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); padding: 10px 14px; margin: 2px 0 18px; }
+  .linkzone { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
+  .linkzone .inp { padding: 9px 11px; font-size: 13px; }
+  .openlink { color: var(--accent); font-weight: 600; font-size: 13px; flex: 0 0 auto; }
+  .aplus-status { font-size: 13px; font-weight: 600; color: var(--green); flex: 0 0 auto; }
 
   .vhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
   .vhead h2 { font-size: 20px; font-weight: 700; margin: 0; }
@@ -169,12 +177,23 @@
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const TABLE = 'launch_skus';
 
-  window.onAuthReady = function () {
+  let ROLE = 'coy';
+  window.onAuthReady = function (role) {
+    ROLE = role || (window.AuthApp && window.AuthApp.role) || 'coy';
     EDIT = !(window.AuthApp && window.AuthApp.isViewOnly());
+    if (ROLE === 'designer') {
+      state.tab = 'aplus_needs';
+      document.querySelector('.page-title').textContent = 'A+ Content';
+      document.querySelector('.page-sub').textContent = 'Paste the Dropbox link for each product group\u2019s A+ content.';
+    }
     loadSharedNav();
-    loadSkus();
-    sb.channel('pipe').on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, loadSkus).subscribe();
+    loadAll();
+    sb.channel('pipe')
+      .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aplus_content' }, loadAll)
+      .subscribe();
   };
+  async function loadAll() { await Promise.all([loadSkus(), loadAplus()]); render(); }
 
   // ============================================================================
   // Pipeline
@@ -203,7 +222,35 @@
     const { data, error } = await sb.from(TABLE).select('*').order('sort_order', { ascending: true });
     if (error) { toast('Couldn\u2019t load'); console.error(error); return; }
     skus = data || [];
-    render();
+  }
+  let aplus = {}; // group_name -> { dropbox_link, done }
+  async function loadAplus() {
+    const { data, error } = await sb.from('aplus_content').select('*');
+    if (error) { console.error(error); return; }
+    aplus = {}; (data||[]).forEach(r => { aplus[r.group_name] = r; });
+  }
+  const allGroups = () => [...new Set(skus.map(s => s.group_name))].sort((a,b) => a.localeCompare(b));
+  const aplusCounts = () => {
+    const gs = allGroups(); let d = 0;
+    gs.forEach(g => { if (aplus[g] && aplus[g].done) d++; });
+    return { needs: gs.length - d, done: d };
+  };
+  async function saveAplusLink(group, link) {
+    link = (link||'').trim();
+    if (!link) { toast('Paste a link first'); return; }
+    const { error } = await sb.from('aplus_content').upsert({ group_name:group, dropbox_link:link, done:true, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
+    if (error) { toast('Save failed'); console.error(error); return; }
+    toast('A+ link saved — moved to Done');
+  }
+  async function markAplusComplete(group) {
+    const { error } = await sb.from('aplus_content').upsert({ group_name:group, done:true, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
+    if (error) { toast('Failed'); console.error(error); return; }
+    toast('Marked A+ complete');
+  }
+  async function reopenAplus(group) {
+    const { error } = await sb.from('aplus_content').upsert({ group_name:group, dropbox_link:null, done:false, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
+    if (error) { toast('Failed'); return; }
+    toast('Moved back to Needs A+');
   }
   async function patch(id, fields) {
     fields.updated_at = new Date().toISOString();
@@ -249,6 +296,7 @@
     const ids = skus.filter(s => s.group_name===oldName).map(s => s.id);
     const { error } = await sb.from(TABLE).update({ group_name:name }).in('id', ids);
     if (error) { toast('Rename failed'); return; }
+    if (aplus[oldName]) { await sb.from('aplus_content').update({ group_name:name }).eq('group_name', oldName); }
     state.group = name; toast('Group renamed');
   }
 
@@ -257,7 +305,18 @@
 
   function render() { renderPipe(); renderView(); }
 
+  const APLUS = [ { key:'aplus_needs', label:'Needs A+ Content' }, { key:'aplus_done', label:'A+ Content Done' } ];
+
   function renderPipe() {
+    const c = aplusCounts();
+    const aplusTabs = APLUS.map(t => {
+      const n = t.key==='aplus_needs' ? c.needs : c.done, active = state.tab===t.key;
+      return `<button class="tab aplus ${active?'active':''}" data-act="tab" data-tab="${t.key}">
+        <span class="tlabel">${t.label}</span><span class="tcount">${n}</span></button>`;
+    }).join('');
+
+    if (ROLE === 'designer') { $('pipe').innerHTML = aplusTabs; return; }
+
     const linear = STAGES.map((st,i) => {
       const n = inStage(st.key).length, active = state.tab===st.key;
       return `${i>0?`<span class="chev"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>`:''}
@@ -270,10 +329,47 @@
       <button class="tab branch ${ba?'active':''}" data-act="tab" data-tab="${BRANCH.key}">
         <span class="tlabel">${BRANCH.label}</span><span class="tcount">${bn}</span>
       </button>`;
-    $('pipe').innerHTML = linear + branch;
+    $('pipe').innerHTML = linear + branch + `<span class="branch-sep"></span>` + aplusTabs;
   }
 
-  function renderView() { if (state.group) renderDetail(); else renderGroupList(); }
+  function renderView() {
+    if (state.tab === 'aplus_needs' || state.tab === 'aplus_done') { renderAplus(state.tab); return; }
+    if (state.group) renderDetail(); else renderGroupList();
+  }
+
+  function renderAplus(kind) {
+    const done = kind === 'aplus_done';
+    const gs = allGroups().filter(g => done ? (aplus[g] && aplus[g].done) : !(aplus[g] && aplus[g].done));
+
+    let html = `<div class="vhead"><div><h2>${done ? 'A+ Content Done' : 'Needs A+ Content'}</h2>
+      <p class="hint">A+ content is set per product group.</p></div></div>`;
+    if (!done) html += `<div class="note">Each product group moves to \u201CA+ Content Done\u201D as soon as a Dropbox link is added.</div>`;
+
+    if (!gs.length) {
+      html += `<div class="empty"><p>${done ? 'Nothing completed yet.' : 'All product groups have A+ content. \uD83C\uDF89'}</p></div>`;
+      $('view').innerHTML = html; return;
+    }
+
+    html += `<div class="skulist">` + gs.map(g => {
+      if (!done) {
+        const complete = (ROLE !== 'designer')
+          ? `<button class="tbtn sell" data-act="aplus-complete" data-group="${esc(g)}">Mark complete</button>` : '';
+        return `<div class="sku"><div class="slabel">${esc(g)}</div>
+          <div class="linkzone">
+            <input class="inp aplus-input" type="url" placeholder="Paste Dropbox link\u2026" data-group="${esc(g)}">
+            <button class="btn primary" data-act="aplus-save" data-group="${esc(g)}">Save</button>
+          </div>
+          <div class="rowtools">${complete}</div></div>`;
+      }
+      const rec = aplus[g] || {};
+      const shown = rec.dropbox_link
+        ? `<a class="openlink" href="${esc(rec.dropbox_link)}" target="_blank" rel="noopener">Open ↗</a>`
+        : `<span class="aplus-status">✓ Marked complete</span>`;
+      return `<div class="sku"><div class="slabel">${esc(g)}</div>${shown}
+        <div class="rowtools"><button class="tbtn" data-act="aplus-reopen" data-group="${esc(g)}">↩ Back to Needs</button></div></div>`;
+    }).join('') + `</div>`;
+    $('view').innerHTML = html;
+  }
 
   function renderGroupList() {
     const st = stageDef(state.tab);
@@ -374,6 +470,9 @@
     handle(el.dataset.act, el);
   });
   document.getElementById('app-main').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('aplus-input')) {
+      e.preventDefault(); saveAplusLink(e.target.dataset.group, e.target.value); return;
+    }
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const el = e.target.closest('[role="checkbox"][data-act]'); if (!el) return;
     e.preventDefault(); handle(el.dataset.act, el);
@@ -394,6 +493,9 @@
       case 'del': if (s) delSku(s.id); break;
       case 'delgroup': delGroup(el.dataset.group); break;
       case 'rename': renameGroup(el.dataset.group); break;
+      case 'aplus-save': { const row = el.closest('.sku'); const inp = row ? row.querySelector('.aplus-input') : null; saveAplusLink(el.dataset.group, inp ? inp.value : ''); break; }
+      case 'aplus-complete': markAplusComplete(el.dataset.group); break;
+      case 'aplus-reopen': reopenAplus(el.dataset.group); break;
       case 'addgroup-open': state.adding = true; renderView(); $('fGroup')?.focus(); break;
       case 'addgroup-cancel': state.adding = false; renderView(); break;
       case 'addgroup-save': saveNewGroup(); break;
