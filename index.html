@@ -63,6 +63,14 @@
   .linkzone .inp { padding: 9px 11px; font-size: 13px; }
   .openlink { color: var(--accent); font-weight: 600; font-size: 13px; flex: 0 0 auto; }
   .aplus-status { font-size: 13px; font-weight: 600; color: var(--green); flex: 0 0 auto; }
+  .guidezone { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .guideadd { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px dashed var(--border); border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+  .guideadd:hover { color: var(--text); border-color: var(--accent); }
+  .guidechip { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 7px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); color: var(--blue); font-size: 12px; font-weight: 600; text-decoration: none; }
+  .guidechip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .guidechip:hover { border-color: var(--blue); }
+  .gx { border: none; background: none; color: var(--text-dim); font-size: 16px; line-height: 1; cursor: pointer; padding: 4px 7px; border-radius: 4px; font-family: inherit; }
+  .gx:hover { color: var(--red); background: var(--panel-2); }
 
   .vhead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
   .vhead h2 { font-size: 20px; font-weight: 700; margin: 0; }
@@ -258,6 +266,59 @@
     if (error) { toast('Failed'); console.error(error); return; }
     toast('Marked not selling');
   }
+  // --- Copywriting guide (Supabase Storage) -----------------------------------
+  const GUIDE_BUCKET = 'documents';
+  const GUIDE_MAX = 25 * 1024 * 1024;
+
+  function guideUrl(path) {
+    const { data } = sb.storage.from(GUIDE_BUCKET).getPublicUrl(path);
+    return data ? data.publicUrl : '#';
+  }
+  function guideCell(g) {
+    const rec = aplus[g] || {};
+    if (rec.guide_path) {
+      return `<div class="guidezone">
+        <a class="guidechip" href="${esc(guideUrl(rec.guide_path))}" target="_blank" rel="noopener" title="${esc(rec.guide_name || 'Copywriting guide')}">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 2v6h6" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+          <span>${esc(rec.guide_name || 'Copywriting guide')}</span>
+        </a>
+        <button class="gx" data-act="aplus-guide-remove" data-group="${esc(g)}" title="Remove guide">&times;</button>
+      </div>`;
+    }
+    return `<div class="guidezone">
+      <label class="guideadd">
+        <input type="file" class="guide-file" data-group="${esc(g)}" hidden>
+        <span>+ Copywriting guide</span>
+      </label>
+    </div>`;
+  }
+  async function uploadGuide(group, file) {
+    if (!file) return;
+    if (file.size > GUIDE_MAX) { toast('File too large \u2014 25MB max'); return; }
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const slug = group.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'group';
+    const path = `copy-guides/${slug}-${Date.now()}.${ext}`;
+    toast('Uploading\u2026');
+    const { error: upErr } = await sb.storage.from(GUIDE_BUCKET).upload(path, file, { upsert: true, contentType: file.type || undefined });
+    if (upErr) { toast('Upload failed'); console.error(upErr); return; }
+    const prev = (aplus[group] || {}).guide_path;
+    const { error } = await sb.from('aplus_content').upsert({ group_name:group, guide_path:path, guide_name:file.name, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
+    if (error) { toast('File uploaded but record failed'); console.error(error); return; }
+    if (prev && prev !== path) await sb.storage.from(GUIDE_BUCKET).remove([prev]);
+    toast('Copywriting guide added');
+    await loadAll();
+  }
+  async function removeGuide(group) {
+    const rec = aplus[group] || {};
+    if (!rec.guide_path) return;
+    if (!confirm(`Remove the copywriting guide for "${group}"?`)) return;
+    await sb.storage.from(GUIDE_BUCKET).remove([rec.guide_path]);
+    const { error } = await sb.from('aplus_content').update({ guide_path:null, guide_name:null, updated_at:new Date().toISOString() }).eq('group_name', group);
+    if (error) { toast('Remove failed'); console.error(error); return; }
+    toast('Guide removed');
+    await loadAll();
+  }
+
   async function addAplusGroup(name) {
     name = (name||'').trim();
     if (!name) { toast('Name the group first'); return; }
@@ -381,6 +442,7 @@
             <button class="tbtn nogo" data-act="aplus-notselling" data-group="${esc(g)}">Not selling</button>
             <button class="tbtn sell" data-act="aplus-complete" data-group="${esc(g)}">Mark complete</button>` : '';
           return `<div class="sku"><div class="slabel">${esc(g)}</div>
+            ${guideCell(g)}
             <div class="linkzone">
               <input class="inp aplus-input" type="url" placeholder="Paste Dropbox link\u2026" data-group="${esc(g)}">
               <button class="btn primary" data-act="aplus-save" data-group="${esc(g)}">Save</button>
@@ -402,7 +464,7 @@
         const shown = rec.dropbox_link
           ? `<a class="openlink" href="${esc(rec.dropbox_link)}" target="_blank" rel="noopener">Open ↗</a>`
           : `<span class="aplus-status">✓ Marked complete</span>`;
-        return `<div class="sku"><div class="slabel">${esc(g)}</div>${shown}
+        return `<div class="sku"><div class="slabel">${esc(g)}</div>${guideCell(g)}${shown}
           <div class="rowtools"><button class="tbtn" data-act="aplus-reopen" data-group="${esc(g)}">↩ Back to Needs</button></div></div>`;
       }).join('') + `</div>`;
     }
@@ -513,6 +575,12 @@
     const el = e.target.closest('[data-act]'); if (!el) return;
     handle(el.dataset.act, el);
   });
+  document.getElementById('app-main').addEventListener('change', e => {
+    const inp = e.target.closest('.guide-file'); if (!inp) return;
+    const f = inp.files && inp.files[0];
+    inp.value = '';
+    if (f) uploadGuide(inp.dataset.group, f);
+  });
   document.getElementById('app-main').addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.id === 'fAplusGroup') { e.preventDefault(); saveAplusGroup(); return; }
     if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('aplus-input')) {
@@ -542,6 +610,7 @@
       case 'aplus-complete': markAplusComplete(el.dataset.group); break;
       case 'aplus-reopen': reopenAplus(el.dataset.group); break;
       case 'aplus-notselling': markNotSelling(el.dataset.group); break;
+      case 'aplus-guide-remove': removeGuide(el.dataset.group); break;
       case 'aplus-addgroup-open': state.adding = true; renderView(); $('fAplusGroup')?.focus(); break;
       case 'aplus-addgroup-cancel': state.adding = false; renderView(); break;
       case 'aplus-addgroup-save': saveAplusGroup(); break;
