@@ -69,6 +69,12 @@
   .section-hdr { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 0 8px; gap: 12px; flex-wrap: wrap; }
   .section-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
   .section-sub { font-size: 12px; color: var(--text-dim); }
+  .leakage-note {
+    font-size: 12px; color: var(--text-dim); line-height: 1.5;
+    background: var(--panel); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm); padding: 10px 14px; margin: -12px 0 18px;
+  }
   .block-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 6px; font-weight: 600; }
 
   .table-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
@@ -237,6 +243,45 @@
   }
 
   // ============================================================================
+  // Product group cost lookup — same engine profit.html uses, so SKU-level
+  // numbers tie out to the group-level P&L. Longest prefix wins.
+  // NOTE: strips FBA-/FBA2- before matching. sales_daily is already merged
+  // (FBA-DB-CDC and DB-CDC are one SKU), but ad_daily may not be, and a raw
+  // "FBA-DB-CDC" would never match the "DB-" prefix.
+  // ============================================================================
+  const AMAZON_LEAKAGE_RATE = 0.08;
+  let _prefixMap = null;
+
+  function cleanSku(s) {
+    let x = String(s || '').toUpperCase().trim();
+    if (x.startsWith('FBA2-')) x = x.slice(5);
+    else if (x.startsWith('FBA-')) x = x.slice(4);
+    return x;
+  }
+
+  async function loadPrefixMap() {
+    if (_prefixMap) return _prefixMap;
+    const { data, error } = await sb
+      .from('product_group_prefixes')
+      .select('prefix, product_groups(group_name, cogs, fbm_fee, fba_fee)');
+    if (error) throw new Error(error.message);
+    _prefixMap = (data || []).map(p => ({
+      prefix:  String(p.prefix || '').toUpperCase(),
+      group:   p.product_groups?.group_name || '',
+      cogs:    parseFloat(p.product_groups?.cogs || 0),
+      fbm_fee: parseFloat(p.product_groups?.fbm_fee || 0),
+      fba_fee: parseFloat(p.product_groups?.fba_fee || 0),
+    })).sort((a, b) => b.prefix.length - a.prefix.length);
+    return _prefixMap;
+  }
+
+  function matchPrefix(sku) {
+    const s = cleanSku(sku);
+    for (const p of (_prefixMap || [])) if (s.startsWith(p.prefix)) return p;
+    return null;
+  }
+
+  // ============================================================================
   // Data load
   // ============================================================================
   async function fetchPaged(table, columns, filters = []) {
@@ -399,8 +444,7 @@
 
       const blbRows = await fetchPaged('blb_inventory_snapshot',
         'sku, channel, location, on_hand_avail',
-        [['location', 'eq', 'HQ'], ['sku', 'in', matchedSkus]]);
-      const blbIndex = new Map();
+        [['location', 'eq', 'HQ'], ['sku', 'in', matchedSkus]]);      const blbIndex = new Map();
       for (const r of blbRows) {
         const ch = String(r.channel || '').toLowerCase();
         if (ch !== 'ecommerce' && ch !== 'wholesale') continue;
@@ -411,12 +455,43 @@
         blbIndex.set(sku, entry);
       }
 
+      // 5b. Cost model + ad data for ROAS / margin.
+      await loadPrefixMap();
+
+      // ad_daily may or may not carry a `sales` column. Try with it, fall back
+      // without so the page still renders (ROAS shows as N/A in that case).
+      const adWinStart = toISO(addDays(latestDate, -89));
+      const adWinEnd   = toISO(latestDate);
+      let adRows = [], adHasSales = true;
+      try {
+        adRows = await fetchPaged('ad_daily', 'date, sku, spend, sales',
+          [['date', 'gte', adWinStart], ['date', 'lte', adWinEnd]]);
+      } catch (e) {
+        adHasSales = false;
+        adRows = await fetchPaged('ad_daily', 'date, sku, spend',
+          [['date', 'gte', adWinStart], ['date', 'lte', adWinEnd]]);
+      }
+      // Key ad rows by CLEANED sku so FBA-DB-CDC folds into DB-CDC.
+      const adBySku = new Map();
+      for (const a of adRows) {
+        const k = cleanSku(a.sku);
+        if (!matchedSet.has(k)) continue;
+        if (!adBySku.has(k)) adBySku.set(k, []);
+        adBySku.get(k).push(a);
+      }
+
       // 6. Build per-SKU rows
       const result = {
         query: q,
         latest_date: latestSalesISO,
         skus: [],
         totals: { units_t30: 0, units_t90: 0, revenue_t30: 0, revenue_t90: 0, fba_stock: 0, fba_inbound: 0, blb_ecom: 0, blb_wholesale: 0 },
+        ad_has_sales: adHasSales,
+        pnl: {
+          7:  { revenue:0, cogs:0, fees:0, spend:0, adsales:0, leakage:0, net:0, units:0, fba_units:0 },
+          30: { revenue:0, cogs:0, fees:0, spend:0, adsales:0, leakage:0, net:0, units:0, fba_units:0 },
+          90: { revenue:0, cogs:0, fees:0, spend:0, adsales:0, leakage:0, net:0, units:0, fba_units:0 },
+        },
       };
 
       const rowsBySku = new Map();
@@ -436,11 +511,27 @@
         let fbaU7=0, fbaU30=0;
         let firstFba = null;
 
+        // new: per-window P&L accumulators. Fee is chosen per ROW (is_fba),
+        // because a merged SKU carries both FBA and FBM sales.
+        const pg = matchPrefix(sku);
+        const W = { 7:{u:0,rev:0,cogs:0,fees:0,fbaU:0}, 30:{u:0,rev:0,cogs:0,fees:0,fbaU:0}, 90:{u:0,rev:0,cogs:0,fees:0,fbaU:0} };
+        const winSets = { 7:d7, 30:d30, 90:d90 };
+
         for (const row of rows) {
           const dStr = (row.date instanceof Date) ? toISO(row.date) : String(row.date).slice(0,10);
           const u = row.units || 0;
           const rev = parseFloat(row.revenue || 0);
           const sess = row.sessions || 0;
+          const unitFee = pg ? (row.is_fba ? pg.fba_fee : pg.fbm_fee) : 0;
+
+          for (const k of [7,30,90]) {
+            if (!winSets[k].has(dStr)) continue;
+            const w = W[k];
+            w.u += u; w.rev += rev;
+            w.cogs += u * (pg ? pg.cogs : 0);
+            w.fees += u * unitFee;
+            if (row.is_fba) w.fbaU += u;
+          }
 
           if (d30.has(dStr))  { u30 += u; r30 += rev; s30 += sess; }
           if (d90.has(dStr))  { u90 += u; r90 += rev; s90 += sess; }
@@ -462,6 +553,34 @@
         const daysInFba = (firstFba && latestDateObj)
           ? Math.round((latestDateObj - firstFba) / 86400000) + 1 : null;
         const velocity = calcVelocity(fbaU7, fbaU30, daysInFba);
+
+        // Ad spend / ad sales per window for this (merged) SKU
+        for (const a of (adBySku.get(sku) || [])) {
+          const dStr = (a.date instanceof Date) ? toISO(a.date) : String(a.date).slice(0,10);
+          const sp = parseFloat(a.spend || 0);
+          const asales = adHasSales ? parseFloat(a.sales || 0) : 0;
+          for (const k of [7,30,90]) {
+            if (!winSets[k].has(dStr)) continue;
+            W[k].spend = (W[k].spend || 0) + sp;
+            W[k].adsales = (W[k].adsales || 0) + asales;
+          }
+        }
+
+        const perf = {};
+        for (const k of [7,30,90]) {
+          const w = W[k];
+          const spend = w.spend || 0, adsales = w.adsales || 0;
+          const leakage = w.rev * AMAZON_LEAKAGE_RATE;
+          const net = w.rev - w.cogs - w.fees - spend - leakage;
+          perf[k] = {
+            units: w.u, revenue: w.rev, cogs: w.cogs, fees: w.fees,
+            spend, adsales, leakage, net,
+            margin: w.rev ? net / w.rev : null,
+            roas: (adHasSales && spend > 0) ? adsales / spend : null,
+            tacos: w.rev > 0 ? spend / w.rev : null,
+            fba_pct: w.u > 0 ? w.fbaU / w.u : null,
+          };
+        }
 
         const fbaInv = fbaMap.get(sku) || {};
         // FBA Stock = on_hand from Planning Report (= "Inventory Supply at FBA").
@@ -497,8 +616,17 @@
           fba_stock: fbaStock, fba_inbound: fbaInbound, days_supply: daysSupply,
           blb_ecom: blb.ecommerce, blb_wholesale: blb.wholesale,
           pct_rev_30: pctRev,
+          perf,
+          group: pg ? pg.group : null,
         };
         result.skus.push(rowData);
+
+        for (const k of [7,30,90]) {
+          const P = result.pnl[k], p = perf[k];
+          P.revenue += p.revenue; P.cogs += p.cogs; P.fees += p.fees;
+          P.spend += p.spend; P.adsales += p.adsales; P.leakage += p.leakage;
+          P.net += p.net; P.units += p.units; P.fba_units += (W[k].fbaU || 0);
+        }
 
         result.totals.units_t30 += rowData.units_t30;
         result.totals.units_t90 += rowData.units_t90;
@@ -597,18 +725,100 @@
     }
     html += '</tbody></table></div>';
 
-    // BLOCK 3: Inventory
+    // BLOCK 3: Profitability (aggregate breakdown, windows as columns)
+    const P = d.pnl;
+    const pLine = (label, key, opts = {}) => {
+      const fn = opts.pct ? (v) => fmtP(v) : (v) => fmt(v);
+      const style = opts.bold ? ' style="font-weight:700;"' : (opts.dim ? ' style="color:var(--text-dim);"' : '');
+      return `<tr${style}><td>${label}</td>` +
+        [7,30,90].map(k => `<td class="r">${fn(opts.get ? opts.get(P[k]) : P[k][key])}</td>`).join('') + '</tr>';
+    };
+    html += '<div class="block-label">Contribution Margin (pre-agency)</div>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>Line</th><th class="r">T7</th><th class="r">T30</th><th class="r">T90</th>';
+    html += '</tr></thead><tbody>';
+    html += pLine('Revenue', 'revenue');
+    html += pLine('COGS', 'cogs', { dim: true, get: p => -p.cogs });
+    html += pLine('Amazon fees', 'fees', { dim: true, get: p => -p.fees });
+    html += pLine('Ad spend', 'spend', { dim: true, get: p => -p.spend });
+    html += pLine('Amazon leakage (8%)', 'leakage', { dim: true, get: p => -p.leakage });
+    html += pLine('Net contribution', 'net', { bold: true });
+    html += `<tr style="font-weight:700;"><td>Margin %</td>` +
+      [7,30,90].map(k => `<td class="r">${P[k].revenue ? fmtP(P[k].net / P[k].revenue) : '—'}</td>`).join('') + '</tr>';
+    html += '</tbody></table></div>';
+    html += '<div class="leakage-note">Excludes agency fees, which are allocated at product-group level and distort SKU-level margin. Expect this to read a few points above the Profit page.</div>';
+
+    // Per-SKU margin
+    html += '<div class="block-label">Margin by SKU</div>';
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>SKU</th><th class="r">Margin T7</th><th class="r">Margin T30</th><th class="r">Margin T90</th>';
+    html += '<th class="r">Net T30</th><th class="r">Net T90</th>';
+    html += '</tr></thead><tbody>';
+    for (const r of d.skus) {
+      html += `<tr>
+        <td class="mono">${r.sku}</td>
+        <td class="r">${r.perf[7].margin === null ? '—' : fmtP(r.perf[7].margin)}</td>
+        <td class="r">${r.perf[30].margin === null ? '—' : fmtP(r.perf[30].margin)}</td>
+        <td class="r">${r.perf[90].margin === null ? '—' : fmtP(r.perf[90].margin)}</td>
+        <td class="r">${fmt(r.perf[30].net)}</td>
+        <td class="r">${fmt(r.perf[90].net)}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+
+    // BLOCK 4: Ad Performance
+    html += '<div class="block-label">Ad Performance</div>';
+    if (!d.ad_has_sales) {
+      html += '<div class="leakage-note">ad_daily has no <span class="mono">sales</span> column, so ROAS is unavailable. TACOS still works off spend and total revenue.</div>';
+    }
+    html += '<div class="table-wrap"><table><thead><tr>';
+    html += '<th>SKU</th><th class="r">Spend T7</th><th class="r">Spend T30</th><th class="r">Spend T90</th>';
+    html += '<th class="r">ROAS T7</th><th class="r">ROAS T30</th><th class="r">ROAS T90</th>';
+    html += '<th class="r">TACOS T7</th><th class="r">TACOS T30</th><th class="r">TACOS T90</th>';
+    html += '</tr></thead><tbody>';
+    const roasCell = (v) => v === null ? '—' : `<span style="color:${v >= 3 ? 'var(--green)' : (v >= 1.5 ? 'var(--text)' : 'var(--red)')};font-weight:600;">${v.toFixed(2)}x</span>`;
+    for (const r of d.skus) {
+      html += `<tr>
+        <td class="mono">${r.sku}</td>
+        <td class="r">${fmt(r.perf[7].spend)}</td>
+        <td class="r">${fmt(r.perf[30].spend)}</td>
+        <td class="r">${fmt(r.perf[90].spend)}</td>
+        <td class="r">${roasCell(r.perf[7].roas)}</td>
+        <td class="r">${roasCell(r.perf[30].roas)}</td>
+        <td class="r">${roasCell(r.perf[90].roas)}</td>
+        <td class="r">${r.perf[7].tacos === null ? '—' : fmtP(r.perf[7].tacos)}</td>
+        <td class="r">${r.perf[30].tacos === null ? '—' : fmtP(r.perf[30].tacos)}</td>
+        <td class="r">${r.perf[90].tacos === null ? '—' : fmtP(r.perf[90].tacos)}</td>
+      </tr>`;
+    }
+    const tSpend = k => P[k].spend, tRoas = k => (d.ad_has_sales && P[k].spend > 0) ? P[k].adsales / P[k].spend : null;
+    html += `<tr class="totals-row">
+      <td>TOTAL</td>
+      <td class="r">${fmt(tSpend(7))}</td><td class="r">${fmt(tSpend(30))}</td><td class="r">${fmt(tSpend(90))}</td>
+      <td class="r">${roasCell(tRoas(7))}</td><td class="r">${roasCell(tRoas(30))}</td><td class="r">${roasCell(tRoas(90))}</td>
+      <td class="r">${P[7].revenue ? fmtP(P[7].spend/P[7].revenue) : '—'}</td>
+      <td class="r">${P[30].revenue ? fmtP(P[30].spend/P[30].revenue) : '—'}</td>
+      <td class="r">${P[90].revenue ? fmtP(P[90].spend/P[90].revenue) : '—'}</td>
+    </tr>`;
+    html += '</tbody></table></div>';
+
+    // BLOCK 5: Inventory
     html += '<div class="block-label">Inventory</div>';
     html += '<div class="table-wrap"><table><thead><tr>';
     html += '<th>SKU</th><th class="r">FBA Stock</th><th class="r">Inbound</th><th class="r">Days Supply</th>';
+    html += '<th class="r">FBA% T7</th><th class="r">FBA% T30</th><th class="r">FBA% T90</th>';
     html += '<th class="r">BLB eComm</th><th class="r">BLB Whsl</th><th class="r">BLB Total</th>';
     html += '</tr></thead><tbody>';
+    const fbaPct = (v) => v === null ? '—' : `<span style="color:${v >= 0.95 ? 'var(--text-dim)' : 'var(--accent)'};">${fmtP(v)}</span>`;
     for (const r of d.skus) {
       html += `<tr>
         <td class="mono">${r.sku}</td>
         <td class="r" style="font-weight:600;">${fmtN(r.fba_stock)}</td>
         <td class="r" style="color:var(--blue);">${r.fba_inbound > 0 ? fmtN(r.fba_inbound) : '—'}</td>
         <td class="r">${dosBadge(r.days_supply)}</td>
+        <td class="r">${fbaPct(r.perf[7].fba_pct)}</td>
+        <td class="r">${fbaPct(r.perf[30].fba_pct)}</td>
+        <td class="r">${fbaPct(r.perf[90].fba_pct)}</td>
         <td class="r">${fmtN(r.blb_ecom)}</td>
         <td class="r">${fmtN(r.blb_wholesale)}</td>
         <td class="r">${fmtN(r.blb_ecom + r.blb_wholesale)}</td>
@@ -619,6 +829,9 @@
       <td class="r">${fmtN(t.fba_stock)}</td>
       <td class="r" style="color:var(--blue);">${fmtN(t.fba_inbound)}</td>
       <td class="r">—</td>
+      <td class="r">${P[7].units  ? fmtP(P[7].fba_units  / P[7].units)  : '—'}</td>
+      <td class="r">${P[30].units ? fmtP(P[30].fba_units / P[30].units) : '—'}</td>
+      <td class="r">${P[90].units ? fmtP(P[90].fba_units / P[90].units) : '—'}</td>
       <td class="r">${fmtN(t.blb_ecom)}</td>
       <td class="r">${fmtN(t.blb_wholesale)}</td>
       <td class="r">${fmtN(t.blb_ecom + t.blb_wholesale)}</td>
