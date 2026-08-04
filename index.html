@@ -201,7 +201,15 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'aplus_content' }, loadAll)
       .subscribe();
   };
-  async function loadAll() { await Promise.all([loadSkus(), loadAplus()]); render(); }
+
+  // Realtime is now only a convenience for picking up OTHER people's edits.
+  // Every local action updates state and re-renders on its own, so the page
+  // stays correct even if the realtime channel never connects.
+  async function loadAll() {
+    await Promise.all([loadSkus(), loadAplus()]);
+    await promoteCompleted();   // heal any SKU already at 3/3 but stuck in "closed"
+    render();
+  }
 
   // ============================================================================
   // Pipeline
@@ -237,6 +245,23 @@
     if (error) { console.error(error); return; }
     aplus = {}; (data||[]).forEach(r => { aplus[r.group_name] = r; });
   }
+
+  // Any SKU sitting in "closed" with all three boxes ticked belongs in "selling".
+  // Runs on every load so rows stranded by the old bug fix themselves.
+  async function promoteCompleted() {
+    if (!EDIT) return;
+    const stuck = skus.filter(s =>
+      s.stage === 'closed' && s.aplus_synced && s.inventory_synced && s.launched_live);
+    if (!stuck.length) return;
+    const ids = stuck.map(s => s.id);
+    const { error } = await sb.from(TABLE)
+      .update({ stage:'selling', updated_at:new Date().toISOString() })
+      .in('id', ids);
+    if (error) { console.error(error); return; }
+    stuck.forEach(s => { s.stage = 'selling'; });
+    toast(`${ids.length} SKU${ids.length>1?'s':''} moved to Currently Selling`);
+  }
+
   const allGroups = () => [...new Set(skus.map(s => s.group_name))].sort((a,b) => a.localeCompare(b));
   const aplusUniverse = () => [...new Set([...skus.map(s => s.group_name), ...Object.keys(aplus)])].sort((a,b) => a.localeCompare(b));
   const aplusCounts = () => {
@@ -250,21 +275,25 @@
     const { error } = await sb.from('aplus_content').upsert({ group_name:group, dropbox_link:link, done:true, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
     if (error) { toast('Save failed'); console.error(error); return; }
     toast('A+ link saved — moved to Done');
+    await loadAll();
   }
   async function markAplusComplete(group) {
     const { error } = await sb.from('aplus_content').upsert({ group_name:group, done:true, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
     if (error) { toast('Failed'); console.error(error); return; }
     toast('Marked A+ complete');
+    await loadAll();
   }
   async function reopenAplus(group) {
     const { error } = await sb.from('aplus_content').upsert({ group_name:group, dropbox_link:null, done:false, not_selling:false, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
     if (error) { toast('Failed'); return; }
     toast('Moved back to Needs A+');
+    await loadAll();
   }
   async function markNotSelling(group) {
     const { error } = await sb.from('aplus_content').upsert({ group_name:group, done:false, not_selling:true, dropbox_link:null, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
     if (error) { toast('Failed'); console.error(error); return; }
     toast('Marked not selling');
+    await loadAll();
   }
   // --- Copywriting guide (Supabase Storage) -----------------------------------
   const GUIDE_BUCKET = 'documents';
@@ -325,11 +354,24 @@
     const { error } = await sb.from('aplus_content').upsert({ group_name:name, done:false, not_selling:false, updated_at:new Date().toISOString() }, { onConflict:'group_name' });
     if (error) { toast('Add failed'); console.error(error); return; }
     toast('Group added');
+    await loadAll();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Writes: update local state and repaint FIRST, then persist.
+  // This is what makes checkboxes respond instantly instead of waiting on a
+  // realtime round trip, and it keeps `skus` accurate for the next click.
+  // ---------------------------------------------------------------------------
+  function applyLocal(id, fields) {
+    const i = skus.findIndex(x => x.id === id);
+    if (i > -1) skus[i] = Object.assign({}, skus[i], fields);
   }
   async function patch(id, fields) {
     fields.updated_at = new Date().toISOString();
+    applyLocal(id, fields);
+    render();
     const { error } = await sb.from(TABLE).update(fields).eq('id', id);
-    if (error) { toast('Update failed'); console.error(error); }
+    if (error) { toast('Update failed'); console.error(error); await loadAll(); }
   }
   async function addSkus(group, names) {
     const base = skus.length ? Math.max(...skus.map(s => s.sort_order||0)) + 1 : 0;
@@ -338,23 +380,45 @@
     const { error } = await sb.from(TABLE).insert(rows);
     if (error) { toast('Add failed'); console.error(error); return; }
     toast(rows.length>1 ? `${rows.length} SKUs added` : 'SKU added');
+    await loadAll();
   }
-  async function delSku(id) { const { error } = await sb.from(TABLE).delete().eq('id', id); if (!error) toast('SKU removed'); }
+  async function delSku(id) {
+    const { error } = await sb.from(TABLE).delete().eq('id', id);
+    if (error) { toast('Delete failed'); console.error(error); return; }
+    skus = skus.filter(s => s.id !== id);
+    render();
+    toast('SKU removed');
+  }
   async function delGroup(group) {
     if (!confirm(`Remove all "${group}" SKUs in this stage?`)) return;
     const ids = skus.filter(s => s.group_name===group && s.stage===state.tab).map(s => s.id);
     const { error } = await sb.from(TABLE).delete().in('id', ids);
-    if (!error) { toast('Group removed'); state.group=null; }
+    if (error) { toast('Delete failed'); console.error(error); return; }
+    skus = skus.filter(s => !ids.includes(s.id));
+    state.group = null;
+    render();
+    toast('Group removed');
   }
   function moveClosed(id)  { patch(id, { added_closed:true, stage:'closed' }); toast('Moved to Closed — Ready'); }
   function moveSelling(id) { patch(id, { stage:'selling', added_closed:true, aplus_synced:true, inventory_synced:true, launched_live:true }); toast('Moved to Currently Selling'); }
   function moveBlb(id)     { patch(id, { stage:'blb_only' }); toast('Parked in BURLEBO Selling · Amazon Not'); }
+
+  // Reads the CURRENT row out of state (not a captured copy) so the third
+  // check sees the first two as already true and promotes the SKU.
   function toggleField(s, field) {
-    const flags = { aplus_synced:s.aplus_synced, inventory_synced:s.inventory_synced, launched_live:s.launched_live };
-    flags[field] = !s[field];
-    const all = flags.aplus_synced && flags.inventory_synced && flags.launched_live;
-    const fields = { [field]: !s[field] };
-    if (all) { fields.stage = 'selling'; toast('Now Currently Selling'); }
+    const row = skus.find(x => x.id === s.id) || s;
+    const next = !row[field];
+    const flags = {
+      aplus_synced:     row.aplus_synced,
+      inventory_synced: row.inventory_synced,
+      launched_live:    row.launched_live
+    };
+    flags[field] = next;
+    const fields = { [field]: next };
+    if (flags.aplus_synced && flags.inventory_synced && flags.launched_live) {
+      fields.stage = 'selling';
+      toast('Now Currently Selling');
+    }
     patch(s.id, fields);
   }
   function revert(id, to) {
@@ -372,6 +436,7 @@
     if (error) { toast('Rename failed'); return; }
     if (aplus[oldName]) { await sb.from('aplus_content').update({ group_name:name }).eq('group_name', oldName); }
     state.group = name; toast('Group renamed');
+    await loadAll();
   }
 
   const inStage = stage => skus.filter(s => s.stage === stage);
