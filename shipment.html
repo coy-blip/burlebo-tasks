@@ -82,6 +82,12 @@
   .badge.orange { background: rgba(255, 107, 53, 0.15);  color: var(--accent); }
   .badge.red    { background: rgba(248, 113, 113, 0.15); color: var(--red); }
   .badge.blue   { background: rgba(56, 189, 248, 0.15);  color: var(--blue); }
+  .trend { font-family: 'DM Mono', monospace; font-size: 11px; white-space: nowrap; }
+  .trend.down { color: #f87171; }
+  .trend.up   { color: #4ade80; }
+  .trend.flat { color: var(--text-dim); }
+  .trend.new  { color: #38bdf8; }
+  .cut { color: #f87171; font-size: 11px; }
   .badge.muted  { background: var(--panel-2);            color: var(--text-dim); }
 
   .row-del { background: none; border: none; color: var(--red); cursor: pointer; font-size: 14px; padding: 2px 6px; }
@@ -202,6 +208,20 @@
   const STYLE_COMPANION_THRESHOLD = 55;
   const TARGET_DAYS = 90;
   const ZERO_INV_DEFAULT = 10;
+
+  // ---- trend handling -------------------------------------------------------
+  // The old calcVelocity blended the 7-day rate in ONLY when it ran hot
+  // (>=125% of the 30-day rate). A SKU whose demand was collapsing kept its
+  // inflated 30-day average, so post-season products kept recommending peak
+  // quantities. These constants make the blend work in both directions and
+  // shrink the cover window on anything that is fading.
+  const TREND_UP           = 1.25;  // 7d/30d at or above this = rising
+  const TREND_DOWN         = 0.75;  // 7d/30d at or below this = declining
+  const RECENT_WEIGHT      = 0.50;  // how much the 7-day rate counts when trending
+  const VEL_FLOOR          = 0.40;  // recent rate can't drag below 40% of the 30-day
+  const VEL_CEIL           = 1.50;  // ...or push above 150%. Stops one odd week whipsawing.
+  const TARGET_DAYS_DECLINING = 50; // cover days for a fading SKU (vs TARGET_DAYS)
+  const TARGET_DAYS_NEW       = 60; // cover days for a SKU with <30 days of history
   const BLB_FULL_CAP_PCT = 0.90;
   const BLB_PARTIAL_PCT = 0.80;
   const OOS_THRESHOLD = 10;
@@ -260,7 +280,54 @@
     parts.pop();
     return parts.join('-');
   }
+  // 7d/30d ratio. null when there is no 30-day baseline to compare against.
+  function trendRatio(u7, u30, daysInFba) {
+    if (!(daysInFba && daysInFba >= 30)) return null;
+    const daily30 = u30 > 0 ? u30 / 30 : 0;
+    if (daily30 <= 0) return null;
+    const daily7 = u7 > 0 ? u7 / 7 : 0;
+    return daily7 / daily30;
+  }
+  function trendLabel(ratio) {
+    if (ratio === null) return 'new';
+    if (ratio >= TREND_UP)   return 'up';
+    if (ratio <= TREND_DOWN) return 'down';
+    return 'flat';
+  }
+
   function calcVelocity(u7, u30, daysInFba) {
+    // Not enough history for a 30-day baseline — fall back to the 7-day rate.
+    if (!(daysInFba && daysInFba >= 30)) return u7 > 0 ? u7 / 7 : 0;
+    const daily30 = u30 > 0 ? u30 / 30 : 0;
+    const daily7  = u7  > 0 ? u7  / 7  : 0;
+    if (daily30 <= 0) return daily7;
+    const ratio = daily7 / daily30;
+    // Clamp the recent rate so a single odd week cannot whipsaw the number.
+    const adj7 = Math.max(daily30 * VEL_FLOOR, Math.min(daily7, daily30 * VEL_CEIL));
+    // Blend in BOTH directions. The old version only ever adjusted upward.
+    if (ratio >= TREND_UP || ratio <= TREND_DOWN) {
+      return daily30 * (1 - RECENT_WEIGHT) + adj7 * RECENT_WEIGHT;
+    }
+    return daily30;
+  }
+
+  // Cover window. A fading SKU should not get a full quarter of stock, and a
+  // brand-new SKU should not get 90 days bought off one week of launch spike.
+  function targetDaysFor(u7, u30, daysInFba) {
+    if (!(daysInFba && daysInFba >= 30)) return TARGET_DAYS_NEW;
+    const ratio = trendRatio(u7, u30, daysInFba);
+    if (ratio === null) return TARGET_DAYS;
+    return ratio <= TREND_DOWN ? TARGET_DAYS_DECLINING : TARGET_DAYS;
+  }
+
+  function calcRecommended(inv, dailyVel, targetDays) {
+    if (dailyVel === 0) return inv === 0 ? ZERO_INV_DEFAULT : 0;
+    const target = Math.floor(dailyVel * (targetDays || TARGET_DAYS) + 0.999);
+    return Math.max(0, target - inv);
+  }
+
+  // Old behaviour, kept so the table can show what would have shipped before.
+  function calcVelocityLegacy(u7, u30, daysInFba) {
     if (daysInFba && daysInFba >= 30) {
       const daily30 = u30 > 0 ? u30 / 30 : 0;
       const daily7  = u7  > 0 ? u7  / 7  : 0;
@@ -272,10 +339,9 @@
     }
     return u7 > 0 ? u7 / 7 : 0;
   }
-  function calcRecommended(inv, dailyVel) {
+  function calcRecommendedLegacy(inv, dailyVel) {
     if (dailyVel === 0) return inv === 0 ? ZERO_INV_DEFAULT : 0;
-    const target = Math.floor(dailyVel * TARGET_DAYS + 0.999);
-    return Math.max(0, target - inv);
+    return Math.max(0, Math.floor(dailyVel * TARGET_DAYS + 0.999) - inv);
   }
   function calcShipmentQty(recommended, totalAvail) {
     if (totalAvail < OOS_THRESHOLD) return 0;
@@ -377,6 +443,10 @@
       const u30 = getShipped(sku, 30);
       const daysInFba = getDaysInFba(sku);
       const daily_vel = calcVelocity(u7, u30, daysInFba);
+      const trend_ratio = trendRatio(u7, u30, daysInFba);
+      const trend = trendLabel(trend_ratio);
+      const target_days = targetDaysFor(u7, u30, daysInFba);
+      const legacy_vel = calcVelocityLegacy(u7, u30, daysInFba);
 
       let days_supply;
       if (effective_inv === 0) days_supply = 0;
@@ -399,13 +469,14 @@
         in_flight: inFlight,
         effective_inv,
         u7, u30, daily_vel,
+        trend, trend_ratio, target_days, legacy_vel,
         days_supply, is_trigger,
       });
     }
 
     // Pass 2: build shipment list
     const main = [], oos = [];
-    let totalUnits = 0;
+    let totalUnits = 0, totalUnitsOld = 0;
 
     for (const rec of skuRows) {
       let include = rec.is_trigger;
@@ -416,7 +487,8 @@
       }
       if (!include) continue;
 
-      const recommended = calcRecommended(rec.effective_inv, rec.daily_vel);
+      const recommended = calcRecommended(rec.effective_inv, rec.daily_vel, rec.target_days);
+      const recommendedOld = calcRecommendedLegacy(rec.effective_inv, rec.legacy_vel);
       if (recommended <= 0) continue;
 
       const blb = blbInventoryByShopifySku.get(rec.shopify_sku.toUpperCase()) || { ecommerce: 0, wholesale: 0 };
@@ -459,8 +531,13 @@
         effective_inv: rec.effective_inv,
         days_supply: rec.days_supply !== null ? Math.round(rec.days_supply * 10) / 10 : 0,
         daily_vel: Math.round(rec.daily_vel * 1000) / 1000,
+        trend: rec.trend,
+        trend_ratio: rec.trend_ratio,
+        target_days: rec.target_days,
+        recommended_old: recommendedOld,
       });
       totalUnits += unitsToShip;
+      totalUnitsOld += Math.min(recommendedOld, calcShipmentQty(recommendedOld, totalAvail) || recommendedOld);
     }
 
     main.sort((a, b) => a.shopify_sku.localeCompare(b.shopify_sku));
@@ -469,6 +546,7 @@
     return {
       main, oos,
       total_units: totalUnits,
+      total_units_old: totalUnitsOld,
       run_date: latestSalesISO,
     };
   }
@@ -692,7 +770,12 @@
     }
 
     html += `<div class="section-hdr">
-      <div class="section-title">Shipment List</div>
+      <div class="section-title">Shipment List${
+        d.total_units_old && d.total_units_old > d.total_units
+          ? ` <span class="cut" style="font-weight:400;">\u2014 trend adjustment removed ${
+              fmtN(d.total_units_old - d.total_units)} units (${
+              Math.round((1 - d.total_units / d.total_units_old) * 100)}% less than the old formula)</span>`
+          : ''}</div>
       <div style="display:flex; gap:8px;">
         <button class="btn" onclick="exportTransfer()">⬇️ Export Transfer</button>
         <button class="btn primary" onclick="exportShipment()">⬇️ Export XLSX</button>
@@ -704,7 +787,11 @@
     html += '<th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units to Ship</th>';
     html += '<th>Status</th><th class="r">Transfer</th>';
     html += '<th class="r">FBA Stock</th><th class="r" title="Units from shipment files still within their in-flight window (default 48h, adjustable per shipment)">In Flight</th>';
-    html += '<th class="r">Days Supply</th><th class="r">Recommended</th>';
+    html += '<th class="r">Days Supply</th>';
+    html += '<th title="Last 7 days vs last 30 days. Declining SKUs get a lower velocity AND a shorter cover window.">Trend</th>';
+    html += '<th class="r" title="Days of cover this SKU is being topped up to">Cover</th>';
+    html += '<th class="r">Recommended</th>';
+    html += '<th class="r" title="What the previous formula would have recommended">Was</th>';
     html += '</tr></thead><tbody id="ship-tbody">';
 
     rows.forEach((r, i) => {
@@ -718,7 +805,12 @@
         <td class="r">${fmtN(r.current_inv)}</td>
         <td class="r" style="color: var(--blue);">${r.in_flight > 0 ? fmtN(r.in_flight) : '—'}</td>
         <td class="r">${r.days_supply ? r.days_supply.toFixed(1) + 'd' : '0d'}</td>
+        <td>${trendCell(r)}</td>
+        <td class="r" style="color: var(--text-dim);">${r.target_days}d</td>
         <td class="r" style="color: var(--text-dim);">${fmtN(r.recommended)}</td>
+        <td class="r">${r.recommended_old > r.recommended
+            ? `<span class="cut">${fmtN(r.recommended_old)}</span>`
+            : `<span style="color:var(--text-dim)">${fmtN(r.recommended_old)}</span>`}</td>
       </tr>`;
     });
     html += '</tbody></table></div>';
@@ -737,6 +829,15 @@
     }
 
     document.getElementById('shipment-content').innerHTML = html;
+  }
+
+  // Trend indicator: arrow + the 7d/30d ratio, so a cut recommendation is
+  // always explainable at a glance.
+  function trendCell(r) {
+    const pct = r.trend_ratio === null ? null : Math.round(r.trend_ratio * 100);
+    const arrow = { up: '\u25B2', down: '\u25BC', flat: '\u2013', new: '\u2726' }[r.trend] || '\u2013';
+    const txt = pct === null ? 'new' : pct + '%';
+    return `<span class="trend ${r.trend}" title="7-day rate is ${txt} of the 30-day rate">${arrow} ${txt}</span>`;
   }
 
   function renderOos(oos) {
