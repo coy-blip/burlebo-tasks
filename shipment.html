@@ -268,6 +268,19 @@
     if (s.startsWith('FBA-'))  return s.slice(4);
     return s;
   }
+  // The Amazon SKU is not always FBA- + Shopify SKU. When Amazon locks a stale
+  // merchant-suggested ASIN onto a SKU, the only fix is relisting under a fresh
+  // SKU (FBA2-). raw_sku from the FBA inventory snapshot is the source of truth;
+  // AMZ_SKU_OVERRIDES covers SKUs not yet present in any snapshot.
+  const AMZ_SKU_OVERRIDES = {
+    'ES-RRG-CDC-S':   'FBA2-ES-RRG-CDC-S',
+    'ES-RRG-CDC-XXL': 'FBA2-ES-RRG-CDC-XXL',
+  };
+  function amazonSku(r) {
+    if (r && r.raw_sku) return String(r.raw_sku).toUpperCase().trim();
+    const shop = String((r && r.shopify_sku) || (r && r.sku) || '').toUpperCase().trim();
+    return AMZ_SKU_OVERRIDES[shop] || ('FBA-' + shop);
+  }
   function isOneSize(sku) {
     const s = stripFba(sku);
     return ['C-', 'BP-', 'DB-'].some(p => s.startsWith(p));
@@ -464,7 +477,7 @@
       }
 
       skuRows.push({
-        amazon_sku: sku, shopify_sku: shopifySku, style_key,
+        amazon_sku: sku, raw_sku: invRow.raw_sku || null, shopify_sku: shopifySku, style_key,
         inv: fbaStock,
         in_flight: inFlight,
         effective_inv,
@@ -497,7 +510,7 @@
       const totalAvail = ecom + wholesale;
 
       if (totalAvail < OOS_THRESHOLD) {
-        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
+        oos.push({ amazon_sku: rec.amazon_sku, raw_sku: rec.raw_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
         continue;
       }
 
@@ -505,11 +518,11 @@
       const blbCanCover = totalAvail >= recommended;
 
       if (unitsToShip <= 0) {
-        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
+        oos.push({ amazon_sku: rec.amazon_sku, raw_sku: rec.raw_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
         continue;
       }
       if (unitsToShip < 7 && !blbCanCover) {
-        oos.push({ amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
+        oos.push({ amazon_sku: rec.amazon_sku, raw_sku: rec.raw_sku, shopify_sku: rec.shopify_sku, units_needed: recommended });
         continue;
       }
 
@@ -520,7 +533,7 @@
       else              status = isPartial ? 'Partial Shipment - Good To Go'    : 'Good To Go';
 
       main.push({
-        amazon_sku: rec.amazon_sku, shopify_sku: rec.shopify_sku,
+        amazon_sku: rec.amazon_sku, raw_sku: rec.raw_sku, shopify_sku: rec.shopify_sku,
         units_to_ship: unitsToShip,
         status,
         transfer_amount: transfer > 0 ? transfer : null,
@@ -797,7 +810,7 @@
     rows.forEach((r, i) => {
       html += `<tr id="ship-row-${i}">
         <td><button class="row-del" onclick="deleteShipRow(${i})" title="Remove from shipment">✕</button></td>
-        <td class="mono">FBA-${r.shopify_sku}</td>
+        <td class="mono">${amazonSku(r)}</td>
         <td class="mono">${r.shopify_sku}</td>
         <td class="r"><input type="number" class="units-input" min="0" value="${r.units_to_ship}" onchange="updateUnits(${i}, this.value)" /></td>
         <td id="status-${i}">${statusBadge(r.status)}</td>
@@ -844,7 +857,7 @@
     let html = `<div class="section-hdr"><div class="section-title" style="color: var(--red);">⚠️ OOS at HQ — Cannot Ship</div><div class="section-sub">${oos.length} SKU${oos.length===1?'':'s'} need restocking at HQ before they can be sent to FBA</div></div>`;
     html += '<div class="table-wrap"><table><thead><tr><th>Amazon SKU</th><th>Shopify SKU</th><th class="r">Units Needed</th></tr></thead><tbody>';
     for (const r of oos) {
-      html += `<tr><td class="mono" style="color: var(--red);">FBA-${r.shopify_sku}</td><td class="mono">${r.shopify_sku}</td><td class="r">${fmtN(r.units_needed)}</td></tr>`;
+      html += `<tr><td class="mono" style="color: var(--red);">${amazonSku(r)}</td><td class="mono">${r.shopify_sku}</td><td class="r">${fmtN(r.units_needed)}</td></tr>`;
     }
     html += '</tbody></table></div>';
     return html;
@@ -911,7 +924,7 @@
               <tbody>`;
       const sortedRows = [...s.rows].sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
       for (const r of sortedRows) {
-        const amzn = r.raw_sku || ('FBA-' + r.sku);
+        const amzn = amazonSku(r);
         html += `<tr><td class="mono" style="color:var(--blue);">${escapeHtml(amzn)}</td><td class="mono">${escapeHtml(r.sku)}</td><td class="r">${fmtN(r.units)}</td></tr>`;
       }
       html += `</tbody></table></div></div>
@@ -1048,7 +1061,7 @@
     for (const r of rows) {
       const units = parseInt(r.units_to_ship, 10) || 0;
       if (units <= 0) continue;
-      aoa.push(['FBA-' + r.shopify_sku, r.shopify_sku, units]);
+      aoa.push([amazonSku(r), r.shopify_sku, units]);
     }
 
     const ws = XLSX.utils.aoa_to_sheet(aoa);
