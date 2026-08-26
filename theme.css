@@ -1,0 +1,387 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Archivo+Narrow:wght@600;700&display=swap');
+
+/* ==========================================================================
+   BURLEBO Analytics — theme.css
+   Two themes, one file:
+     light  →  off-white + Kraft Tan, Classic Deer camo   (default)
+     dark   →  warm brown-black + Kraft Tan, Bendita camo
+
+   HOW THIS WORKS
+   Each page still has its own inline <style> block. This file does not
+   replace them — it outranks them.
+
+   1. Variables. Light is declared at :root:root (0,2,0), which beats the
+      pages' :root (0,1,0). Dark is declared at :root[data-theme="dark"]
+      (0,2,1), which beats both. Since nearly every page rule already uses
+      var(--panel) / var(--text) / var(--accent), recolouring the variables
+      re-themes most of the app for free.
+
+   2. Hardcoded rules. Where a page baked in a literal (#1f242c hovers,
+      rgba(255,255,255,.02) row hover, badge tints, the modal scrim), it
+      gets an explicit override: `html body ...` for light,
+      `html[data-theme="dark"] body ...` for dark. Dark always outranks
+      light because of the extra attribute selector.
+
+   Nothing depends on load order, so theme.js can inject this early and
+   there is no flash of the old theme.
+
+   Palettes are sampled from the prints themselves — Classic Deer for
+   light, Bendita for dark — plus Kraft Tan #D5BA8C from the 2025 guide,
+   which is the one accent shared by both.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. LIGHT (default)
+   ========================================================================== */
+:root:root {
+  --bg:        #F4F2EE;
+  --panel:     #FFFFFF;
+  --panel-2:   #F1EFEA;
+  --border:    #E3E0D8;
+  --hairline:  #EFEDE7;
+
+  --text:      #17191B;
+  --text-dim:  #78736B;
+  --placeholder: #A9A49B;
+
+  --accent:    #17191B;   /* brand primary is black */
+  --on-accent: #FFFFFF;
+  --accent-hover: #2B2E31;
+
+  --tan:       #D5BA8C;   /* Kraft Tan, PMS 467 C */
+  --tan-edge:  #C7A874;
+  --tan-soft:  #F0E4D0;
+  --on-tan:    #1A1408;
+  --slate:     #5B6069;   /* Cool Gray 10 C, Classic Deer */
+
+  --green:  #1F7A4C;  --green-bg:  rgba(31,122,76,.12);
+  --red:    #BC2C3C;  --red-bg:    rgba(188,44,60,.11);
+  --yellow: #A9720C;
+  --blue:   #2A6591;
+  --purple: #6248B8;
+
+  --hover:      #F1EFEA;
+  --hover-edge: #D6D2C8;
+  --row-hover:  #FAF8F4;
+  --chip-count: rgba(23,25,27,.07);
+
+  --camo:       url('/burlebo-camo.png');
+  --camo-wash:  linear-gradient(rgba(244,242,238,.52), rgba(244,242,238,.68));
+
+  --radius:    12px;
+  --radius-sm: 8px;
+  --shadow:    0 1px 2px rgba(23,25,27,.04), 0 1px 3px rgba(23,25,27,.06);
+  --shadow-lg: 0 12px 32px rgba(23,25,27,.14), 0 2px 8px rgba(23,25,27,.08);
+
+  --coy:      #8A5A22;  --coy-bg:      rgba(206,122,46,.15);
+  --designer: #6248B8;  --designer-bg: rgba(98,72,184,.12);
+  --admin:    #1F7A4C;  --admin-bg:    rgba(31,122,76,.12);
+  --employee: #46666A;  --employee-bg: rgba(123,144,143,.20);
+}
+
+/* ==========================================================================
+   2. DARK — Bendita browns. Kraft Tan flips from "highlight" to "primary",
+   so buttons are tan with near-black text rather than black with white.
+   ========================================================================== */
+:root[data-theme="dark"] {
+  --bg:        #16130E;
+  --panel:     #1F1B14;
+  --panel-2:   #29241A;
+  --border:    #3A3327;
+  --hairline:  #2C271D;
+
+  --text:      #F2EDE2;
+  --text-dim:  #A09684;
+  --placeholder: #6E6555;
+
+  --accent:    #D5BA8C;
+  --on-accent: #1A1408;
+  --accent-hover: #E3CCA4;
+
+  --tan:       #D5BA8C;
+  --tan-edge:  #B99C6C;
+  --tan-soft:  rgba(213,186,140,.16);
+  --on-tan:    #1A1408;
+  --slate:     #8A929B;
+
+  --green:  #5DBE87;  --green-bg:  rgba(93,190,135,.15);
+  --red:    #F0808C;  --red-bg:    rgba(240,128,140,.15);
+  --yellow: #E8B45C;
+  --blue:   #74B6E8;
+  --purple: #B39CF0;
+
+  --hover:      #2E2819;
+  --hover-edge: #4A422F;
+  --row-hover:  rgba(213,186,140,.05);
+  --chip-count: rgba(255,255,255,.09);
+
+  --camo:       url('/burlebo-camo-dark.png');
+  --camo-wash:  linear-gradient(rgba(22,19,14,.34), rgba(22,19,14,.52));
+
+  --shadow:    0 1px 2px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.25);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,.55), 0 2px 10px rgba(0,0,0,.4);
+
+  --coy:      #E0A55E;  --coy-bg:      rgba(224,165,94,.16);
+  --designer: #B39CF0;  --designer-bg: rgba(179,156,240,.15);
+  --admin:    #5DBE87;  --admin-bg:    rgba(93,190,135,.15);
+  --employee: #8FB0AE;  --employee-bg: rgba(143,176,174,.16);
+}
+
+/* ==========================================================================
+   3. Type — Archivo stands in for Interstate, the brand face.
+   Tabular figures everywhere so number columns line up.
+   ========================================================================== */
+html body,
+html body .btn,
+html body input,
+html body button,
+html body .pw-field input {
+  font-family: 'Archivo', system-ui, -apple-system, sans-serif;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+html body { letter-spacing: -0.005em; }
+
+html body td.mono,
+html body .mono {
+  font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ==========================================================================
+   4. Header — wing mark is a CSS mask, so it takes the text colour in
+   both themes and there is no second asset to swap.
+   ========================================================================== */
+html body header {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 32px;
+  gap: 24px;
+}
+html body header h1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+html body header h1::before {
+  content: '';
+  width: 30px;
+  height: 21px;
+  flex: none;
+  background-color: var(--text);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2288%20158%20384%20268%22%3E%3Cpath%20d%3D%22M459.78%2C321.35l-92.93%2C92.87c-1.39%2C1.39-3.03%2C2.47-4.81%2C3.21-1.78%2C.74-3.71%2C1.13-5.67%2C1.13h-74.41l-45.69-60.32h93.49c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1l18.3-18.3c4.15-3.85%2C7.6-6.1%2C10.01-7.37s3.78-1.6%2C3.78-1.6H211.46l-45.69-60.32h131.41c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1c0%2C0%2C18.03-18%2C18.3-18.24%2C4.15-3.85%2C7.62-6.1%2C10.04-7.37s3.81-1.6%2C3.81-1.6H140.97l-45.69-60.32H390.3c1.56%2C0%2C3.08%2C.37%2C4.44%2C1.05s2.57%2C1.67%2C3.51%2C2.92l27.12%2C36.01c1.41%2C1.88%2C2.08%2C4.12%2C2.01%2C6.33s-.87%2C4.41-2.4%2C6.2l-34.71%2C40.57h32.58c1.55%2C0%2C3.06%2C.36%2C4.41%2C1.03s2.56%2C1.65%2C3.5%2C2.88l29.9%2C39.18c1.52%2C1.99%2C2.19%2C4.39%2C2.03%2C6.74-.16%2C2.35-1.14%2C4.64-2.91%2C6.41Z%22%2F%3E%3C%2Fsvg%3E") no-repeat center / contain;
+          mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2288%20158%20384%20268%22%3E%3Cpath%20d%3D%22M459.78%2C321.35l-92.93%2C92.87c-1.39%2C1.39-3.03%2C2.47-4.81%2C3.21-1.78%2C.74-3.71%2C1.13-5.67%2C1.13h-74.41l-45.69-60.32h93.49c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1l18.3-18.3c4.15-3.85%2C7.6-6.1%2C10.01-7.37s3.78-1.6%2C3.78-1.6H211.46l-45.69-60.32h131.41c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1c0%2C0%2C18.03-18%2C18.3-18.24%2C4.15-3.85%2C7.62-6.1%2C10.04-7.37s3.81-1.6%2C3.81-1.6H140.97l-45.69-60.32H390.3c1.56%2C0%2C3.08%2C.37%2C4.44%2C1.05s2.57%2C1.67%2C3.51%2C2.92l27.12%2C36.01c1.41%2C1.88%2C2.08%2C4.12%2C2.01%2C6.33s-.87%2C4.41-2.4%2C6.2l-34.71%2C40.57h32.58c1.55%2C0%2C3.06%2C.36%2C4.41%2C1.03s2.56%2C1.65%2C3.5%2C2.88l29.9%2C39.18c1.52%2C1.99%2C2.19%2C4.39%2C2.03%2C6.74-.16%2C2.35-1.14%2C4.64-2.91%2C6.41Z%22%2F%3E%3C%2Fsvg%3E") no-repeat center / contain;
+}
+
+/* Active nav gets a Kraft Tan rule rather than a colour swap. The colour
+   swap is what made the old build read as "the orange dashboard". */
+html body header nav a {
+  position: relative;
+  padding: 6px 0;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+html body header nav a:hover  { color: var(--text); }
+html body header nav a.active { color: var(--text); font-weight: 700; }
+html body header nav a.active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--tan);
+}
+
+html body .role-pill { letter-spacing: .02em; }
+
+/* --- theme switch (injected into the nav by theme.js) ------------------- */
+html body .theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px; height: 30px;
+  margin-left: 4px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: background .14s, color .14s, border-color .14s;
+}
+html body .theme-toggle:hover {
+  background: var(--hover);
+  border-color: var(--hover-edge);
+  color: var(--text);
+}
+
+/* ==========================================================================
+   5. Page furniture
+   ========================================================================== */
+html body main { padding-top: 32px; }
+html body .page-title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+html body .page-sub { color: var(--text-dim); }
+
+html body .controls,
+html body .table-wrap,
+html body .empty {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+/* ==========================================================================
+   6. Buttons + chips
+   ========================================================================== */
+html body .btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  transition: background .12s, border-color .12s, color .12s;
+}
+html body .btn:hover         { background: var(--hover); border-color: var(--hover-edge); }
+html body .btn.primary       { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+html body .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); opacity: 1; }
+html body .btn.ghost         { background: transparent; border-color: transparent; color: var(--text-dim); }
+html body .btn.ghost:hover   { background: var(--hover); color: var(--text); }
+
+html body .inv-group-btn        { background: var(--panel); border-color: var(--border); color: var(--text); }
+html body .inv-group-btn:hover  { background: var(--hover); border-color: var(--hover-edge); }
+/* Active chip is Kraft Tan in both themes — in light it de-conflicts from
+   the black primary button sitting next to it; in dark it matches. */
+html body .inv-group-btn.active { background: var(--tan); border-color: var(--tan-edge); color: var(--on-tan); font-weight: 700; }
+html body .inv-group-btn .count { background: var(--chip-count); color: var(--text-dim); }
+html body .inv-group-btn.active .count { background: rgba(26,20,8,.16); color: var(--on-tan); }
+/* In dark the primary button is already solid tan, so the active chip drops
+   to a tan tint — otherwise two identical tan pills sit side by side. */
+:root[data-theme="dark"] body .inv-group-btn.active {
+  background: var(--tan-soft); border-color: var(--tan); color: var(--tan);
+}
+:root[data-theme="dark"] body .inv-group-btn.active .count {
+  background: rgba(213,186,140,.18); color: var(--tan);
+}
+
+html body .controls input[type=text],
+html body .pw-field input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+html body .controls input[type=text]::placeholder { color: var(--placeholder); }
+html body .pw-field input::placeholder            { color: var(--placeholder); }
+html body .controls input:focus,
+html body .pw-field input:focus {
+  border-color: var(--slate);
+  outline: 2px solid rgba(138,146,155,.22);
+  outline-offset: 0;
+}
+
+/* ==========================================================================
+   7. Tables — tan hairline under the head, no zebra noise
+   ========================================================================== */
+html body .table-wrap { overflow: hidden; }
+html body thead tr { background: var(--panel-2); }
+html body thead th {
+  color: var(--text-dim);
+  font-family: 'Archivo Narrow', 'Archivo', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: .07em;
+  border-bottom: 2px solid var(--tan);
+}
+html body td { border-bottom: 1px solid var(--hairline); }
+html body tbody tr:hover { background: var(--row-hover); }
+html body .group-spacer td { background: var(--bg); }
+
+/* ==========================================================================
+   8. Badges
+   ========================================================================== */
+html body .badge { border-radius: 5px; padding: 3px 8px; letter-spacing: .01em; }
+html body .badge.green  { background: var(--green-bg); color: var(--green); }
+html body .badge.orange { background: var(--tan-soft);  color: var(--yellow); }
+html body .badge.red    { background: var(--red-bg);    color: var(--red); }
+html body .badge.muted  { background: var(--panel-2);   color: var(--text-dim); }
+html body .badge.orange { color: #7A5A21; }
+:root[data-theme="dark"] body .badge.orange { color: var(--tan); }
+
+/* ==========================================================================
+   9. Empty + loading
+   ========================================================================== */
+html body .empty { padding: 72px 20px; }
+html body .empty-icon { opacity: .5; }
+html body .empty-title { color: var(--text); font-weight: 600; }
+html body .empty-sub, html body .loading { color: var(--text-dim); }
+
+/* ==========================================================================
+   10. Sign-in — the one screen the camo runs full bleed. Classic Deer in
+   light, Bendita in dark. Everything past this stays quiet.
+   ========================================================================== */
+html body .modal-overlay {
+  background: var(--camo-wash), var(--camo) center center / cover no-repeat;
+  backdrop-filter: none;
+}
+html body .modal-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: 32px;
+}
+html body .modal-card::before {
+  content: '';
+  display: block;
+  width: 40px; height: 28px;
+  margin-bottom: 18px;
+  background-color: var(--text);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2288%20158%20384%20268%22%3E%3Cpath%20d%3D%22M459.78%2C321.35l-92.93%2C92.87c-1.39%2C1.39-3.03%2C2.47-4.81%2C3.21-1.78%2C.74-3.71%2C1.13-5.67%2C1.13h-74.41l-45.69-60.32h93.49c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1l18.3-18.3c4.15-3.85%2C7.6-6.1%2C10.01-7.37s3.78-1.6%2C3.78-1.6H211.46l-45.69-60.32h131.41c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1c0%2C0%2C18.03-18%2C18.3-18.24%2C4.15-3.85%2C7.62-6.1%2C10.04-7.37s3.81-1.6%2C3.81-1.6H140.97l-45.69-60.32H390.3c1.56%2C0%2C3.08%2C.37%2C4.44%2C1.05s2.57%2C1.67%2C3.51%2C2.92l27.12%2C36.01c1.41%2C1.88%2C2.08%2C4.12%2C2.01%2C6.33s-.87%2C4.41-2.4%2C6.2l-34.71%2C40.57h32.58c1.55%2C0%2C3.06%2C.36%2C4.41%2C1.03s2.56%2C1.65%2C3.5%2C2.88l29.9%2C39.18c1.52%2C1.99%2C2.19%2C4.39%2C2.03%2C6.74-.16%2C2.35-1.14%2C4.64-2.91%2C6.41Z%22%2F%3E%3C%2Fsvg%3E") no-repeat left center / contain;
+          mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2288%20158%20384%20268%22%3E%3Cpath%20d%3D%22M459.78%2C321.35l-92.93%2C92.87c-1.39%2C1.39-3.03%2C2.47-4.81%2C3.21-1.78%2C.74-3.71%2C1.13-5.67%2C1.13h-74.41l-45.69-60.32h93.49c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1l18.3-18.3c4.15-3.85%2C7.6-6.1%2C10.01-7.37s3.78-1.6%2C3.78-1.6H211.46l-45.69-60.32h131.41c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1c0%2C0%2C18.03-18%2C18.3-18.24%2C4.15-3.85%2C7.62-6.1%2C10.04-7.37s3.81-1.6%2C3.81-1.6H140.97l-45.69-60.32H390.3c1.56%2C0%2C3.08%2C.37%2C4.44%2C1.05s2.57%2C1.67%2C3.51%2C2.92l27.12%2C36.01c1.41%2C1.88%2C2.08%2C4.12%2C2.01%2C6.33s-.87%2C4.41-2.4%2C6.2l-34.71%2C40.57h32.58c1.55%2C0%2C3.06%2C.36%2C4.41%2C1.03s2.56%2C1.65%2C3.5%2C2.88l29.9%2C39.18c1.52%2C1.99%2C2.19%2C4.39%2C2.03%2C6.74-.16%2C2.35-1.14%2C4.64-2.91%2C6.41Z%22%2F%3E%3C%2Fsvg%3E") no-repeat left center / contain;
+}
+html body .modal-title { font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+html body .modal-sub   { color: var(--text-dim); }
+html body .modal-option {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  transition: background .12s, border-color .12s;
+}
+html body .modal-option:hover { background: var(--hover); border-color: var(--hover-edge); }
+html body .pw-error { color: var(--red); font-weight: 600; }
+
+/* ==========================================================================
+   11. Quality floor
+   ========================================================================== */
+html body,
+html body header,
+html body .controls,
+html body .table-wrap,
+html body .empty,
+html body .modal-card {
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+}
+html body :focus-visible {
+  outline: 2px solid var(--slate);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  html body * { transition: none !important; animation: none !important; }
+}
+@media (max-width: 720px) {
+  html body header { padding: 12px 16px; flex-wrap: wrap; gap: 10px; }
+  html body main   { padding: 20px 16px; }
+  html body .page-title { font-size: 24px; }
+}
