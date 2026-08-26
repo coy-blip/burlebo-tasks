@@ -329,17 +329,21 @@ html body .empty-sub, html body .loading { color: var(--text-dim); }
    10. Sign-in — the one screen the camo runs full bleed. Classic Deer in
    light, Bendita in dark. Everything past this stays quiet.
    ========================================================================== */
+/* The live modal is the one auth.js injects (.auth-*). Its colours now come
+   from the variables above via var() with fallbacks, so only the camo and a
+   little shape work are needed here. The .modal-* rules below cover the older
+   per-page modal markup that some pages still carry. */
+html body .auth-overlay,
 html body .modal-overlay {
   background: var(--camo-wash), var(--camo) center center / cover no-repeat;
   backdrop-filter: none;
 }
+html body .auth-card,
 html body .modal-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: var(--shadow-lg);
   padding: 32px;
 }
+html body .auth-card::before,
 html body .modal-card::before {
   content: '';
   display: block;
@@ -349,17 +353,22 @@ html body .modal-card::before {
   -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2288%20158%20384%20268%22%3E%3Cpath%20d%3D%22M459.78%2C321.35l-92.93%2C92.87c-1.39%2C1.39-3.03%2C2.47-4.81%2C3.21-1.78%2C.74-3.71%2C1.13-5.67%2C1.13h-74.41l-45.69-60.32h93.49c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1l18.3-18.3c4.15-3.85%2C7.6-6.1%2C10.01-7.37s3.78-1.6%2C3.78-1.6H211.46l-45.69-60.32h131.41c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1c0%2C0%2C18.03-18%2C18.3-18.24%2C4.15-3.85%2C7.62-6.1%2C10.04-7.37s3.81-1.6%2C3.81-1.6H140.97l-45.69-60.32H390.3c1.56%2C0%2C3.08%2C.37%2C4.44%2C1.05s2.57%2C1.67%2C3.51%2C2.92l27.12%2C36.01c1.41%2C1.88%2C2.08%2C4.12%2C2.01%2C6.33s-.87%2C4.41-2.4%2C6.2l-34.71%2C40.57h32.58c1.55%2C0%2C3.06%2C.36%2C4.41%2C1.03s2.56%2C1.65%2C3.5%2C2.88l29.9%2C39.18c1.52%2C1.99%2C2.19%2C4.39%2C2.03%2C6.74-.16%2C2.35-1.14%2C4.64-2.91%2C6.41Z%22%2F%3E%3C%2Fsvg%3E") no-repeat left center / contain;
           mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%2288%20158%20384%20268%22%3E%3Cpath%20d%3D%22M459.78%2C321.35l-92.93%2C92.87c-1.39%2C1.39-3.03%2C2.47-4.81%2C3.21-1.78%2C.74-3.71%2C1.13-5.67%2C1.13h-74.41l-45.69-60.32h93.49c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1l18.3-18.3c4.15-3.85%2C7.6-6.1%2C10.01-7.37s3.78-1.6%2C3.78-1.6H211.46l-45.69-60.32h131.41c2.51%2C0%2C4.96-.5%2C7.24-1.44s4.36-2.33%2C6.13-4.1c0%2C0%2C18.03-18%2C18.3-18.24%2C4.15-3.85%2C7.62-6.1%2C10.04-7.37s3.81-1.6%2C3.81-1.6H140.97l-45.69-60.32H390.3c1.56%2C0%2C3.08%2C.37%2C4.44%2C1.05s2.57%2C1.67%2C3.51%2C2.92l27.12%2C36.01c1.41%2C1.88%2C2.08%2C4.12%2C2.01%2C6.33s-.87%2C4.41-2.4%2C6.2l-34.71%2C40.57h32.58c1.55%2C0%2C3.06%2C.36%2C4.41%2C1.03s2.56%2C1.65%2C3.5%2C2.88l29.9%2C39.18c1.52%2C1.99%2C2.19%2C4.39%2C2.03%2C6.74-.16%2C2.35-1.14%2C4.64-2.91%2C6.41Z%22%2F%3E%3C%2Fsvg%3E") no-repeat left center / contain;
 }
+html body .auth-title,
 html body .modal-title { font-size: 20px; font-weight: 800; letter-spacing: -.02em; }
+html body .auth-sub,
 html body .modal-sub   { color: var(--text-dim); }
-html body .modal-option {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-weight: 600;
-  transition: background .12s, border-color .12s;
-}
-html body .modal-option:hover { background: var(--hover); border-color: var(--hover-edge); }
+html body .auth-option,
+html body .modal-option { font-weight: 600; transition: background .12s, border-color .12s; }
+html body .auth-btn { font-weight: 600; }
+html body .auth-btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+html body .auth-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); opacity: 1; }
+html body .auth-err,
 html body .pw-error { color: var(--red); font-weight: 600; }
+
+/* Denied panel */
+html body .auth-denied { border-radius: 16px; }
+html body .auth-denied h3 { font-weight: 800; letter-spacing: -.02em; }
+html body .auth-denied-page:hover { border-color: var(--tan); color: var(--text); background: var(--hover); }
 
 /* ==========================================================================
    11. Quality floor
