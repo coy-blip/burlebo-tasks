@@ -32,6 +32,84 @@
 (function () {
   'use strict';
 
+  // ===========================================================================
+  // THEME  (added with the BURLEBO retheme)
+  // ---------------------------------------------------------------------------
+  // Runs before anything paints so there is no flash of the old theme.
+  //   light  -> off-white + Kraft Tan, Classic Deer camo  (default)
+  //   dark   -> warm brown-black + Kraft Tan, Bendita camo
+  // Saved per browser in localStorage, so each person keeps their own choice.
+  // The switch is appended to the nav once the page's nav has loaded.
+  // ===========================================================================
+  const THEME_KEY = 'blb-theme';
+  const THEME_DEFAULT = 'light';
+
+  function themeRead() {
+    try { return localStorage.getItem(THEME_KEY); } catch { return null; }
+  }
+  function themeWrite(v) {
+    try { localStorage.setItem(THEME_KEY, v); } catch {}
+  }
+  function themeCurrent() {
+    return document.documentElement.getAttribute('data-theme') || THEME_DEFAULT;
+  }
+  function themeApply(t) {
+    document.documentElement.setAttribute('data-theme', t);
+  }
+
+  // Set the attribute and pull in the stylesheet immediately.
+  (function themeBoot() {
+    const saved = themeRead();
+    themeApply(saved === 'dark' || saved === 'light' ? saved : THEME_DEFAULT);
+    if (!document.getElementById('blb-theme-css')) {
+      const link = document.createElement('link');
+      link.id = 'blb-theme-css';
+      link.rel = 'stylesheet';
+      link.href = '/theme.css';
+      document.head.appendChild(link);
+    }
+  })();
+
+  function labelThemeToggle(btn) {
+    const dark = themeCurrent() === 'dark';
+    btn.textContent = dark ? '\u2600' : '\u263E';   // sun / moon
+    btn.title = dark ? 'Switch to light theme' : 'Switch to dark theme';
+    btn.setAttribute('aria-label', btn.title);
+  }
+
+  // The nav is filled in asynchronously by each page's loadSharedNav(), so
+  // this is retried briefly rather than assuming the nav exists yet.
+  function mountThemeToggle() {
+    if (document.getElementById('theme-toggle')) return true;
+    const nav = document.getElementById('main-nav');
+    if (!nav) return false;
+
+    const btn = document.createElement('button');
+    btn.id = 'theme-toggle';
+    btn.className = 'theme-toggle';
+    btn.type = 'button';
+    labelThemeToggle(btn);
+    btn.addEventListener('click', () => {
+      const next = themeCurrent() === 'dark' ? 'light' : 'dark';
+      themeApply(next);
+      themeWrite(next);
+      labelThemeToggle(btn);
+    });
+
+    // Appended last so it sits to the right of the role pill — loadSharedNav
+    // inserts links *before* the pill, so this stays out of its way.
+    nav.appendChild(btn);
+    return true;
+  }
+
+  function startThemeToggle() {
+    if (mountThemeToggle()) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (mountThemeToggle() || ++tries > 40) clearInterval(timer);
+    }, 100);
+  }
+
   // ---------------------------------------------------------------------------
   // Role definitions
   // ---------------------------------------------------------------------------
@@ -191,86 +269,86 @@
       background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
       display: flex; align-items: center; justify-content: center;
       z-index: 10000;
-      font-family: 'DM Sans', system-ui, sans-serif;
+      font-family: 'Archivo', 'DM Sans', system-ui, sans-serif;
     }
     .auth-card {
-      background: #14171c;
-      border: 1px solid #252a33;
-      border-radius: 10px;
+      background: var(--panel, #14171c);
+      border: 1px solid var(--border, #252a33);
+      border-radius: var(--radius, 10px);
       padding: 28px; width: 380px; max-width: calc(100vw - 32px);
-      color: #e8eaed;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      color: var(--text, #e8eaed);
+      box-shadow: var(--shadow-lg, 0 24px 64px rgba(0,0,0,0.5));
     }
-    .auth-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; color: #e8eaed; }
-    .auth-sub   { font-size: 13px; color: #8a92a0; margin: 0 0 20px 0; }
+    .auth-title { font-size: 18px; font-weight: 700; margin: 0 0 6px 0; color: var(--text, #e8eaed); }
+    .auth-sub   { font-size: 13px; color: var(--text-dim, #8a92a0); margin: 0 0 20px 0; }
     .auth-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
     .auth-option {
-      background: #1a1e25;
-      border: 1px solid #252a33;
-      color: #e8eaed;
+      background: var(--panel-2, #1a1e25);
+      border: 1px solid var(--border, #252a33);
+      color: var(--text, #e8eaed);
       padding: 13px 14px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm, 6px);
       font-family: inherit; font-size: 14px; font-weight: 500;
       text-align: left; cursor: pointer;
       display: flex; align-items: center; gap: 10px;
     }
-    .auth-option:hover { background: #1f242c; border-color: #2f3540; }
+    .auth-option:hover { background: var(--hover, #1f242c); border-color: var(--hover-edge, #2f3540); }
     .auth-option .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .auth-option .dot.coy      { background: #ff6b35; }
-    .auth-option .dot.designer { background: #a78bfa; }
-    .auth-option .dot.admin    { background: #4ade80; }
-    .auth-option .dot.employee { background: #38bdf8; }
+    .auth-option .dot.coy      { background: var(--coy, var(--accent, #ff6b35)); }
+    .auth-option .dot.designer { background: var(--designer, #a78bfa); }
+    .auth-option .dot.admin    { background: var(--admin, #4ade80); }
+    .auth-option .dot.employee { background: var(--employee, #38bdf8); }
 
     .auth-pw { display: none; margin-top: 8px; }
     .auth-pw input {
       width: 100%; padding: 11px 12px;
-      font-family: 'DM Sans', sans-serif; font-size: 14px;
-      background: #0d0f12; color: #e8eaed;
-      border: 1px solid #252a33;
-      border-radius: 6px;
+      font-family: 'Archivo', 'DM Sans', sans-serif; font-size: 14px;
+      background: var(--bg, #0d0f12); color: var(--text, #e8eaed);
+      border: 1px solid var(--border, #252a33);
+      border-radius: var(--radius-sm, 6px);
       outline: none; margin-bottom: 8px; box-sizing: border-box;
     }
-    .auth-pw input:focus { border-color: #ff6b35; }
-    .auth-err { display: none; font-size: 12px; color: #f87171; margin-bottom: 8px; }
+    .auth-pw input:focus { border-color: var(--slate, var(--accent, #ff6b35)); }
+    .auth-err { display: none; font-size: 12px; color: var(--red, #f87171); margin-bottom: 8px; }
     .auth-pw-row { display: flex; gap: 8px; }
     .auth-btn {
       flex: 1; padding: 10px 14px;
       font-family: inherit; font-size: 13px; font-weight: 600;
-      border-radius: 6px; cursor: pointer;
-      border: 1px solid #252a33;
+      border-radius: var(--radius-sm, 6px); cursor: pointer;
+      border: 1px solid var(--border, #252a33);
     }
-    .auth-btn.ghost   { background: transparent; color: #e8eaed; }
-    .auth-btn.primary { background: #ff6b35; color: white; border-color: #ff6b35; }
-    .auth-btn.ghost:hover   { background: #1a1e25; }
+    .auth-btn.ghost   { background: transparent; color: var(--text, #e8eaed); }
+    .auth-btn.primary { background: var(--accent, var(--accent, #ff6b35)); color: var(--on-accent, #fff); border-color: var(--accent, var(--accent, #ff6b35)); }
+    .auth-btn.ghost:hover   { background: var(--panel-2, #1a1e25); }
     .auth-btn.primary:hover { opacity: 0.92; }
 
     /* Denied panel — also fully hardcoded so it reads correctly on the
        light tracker theme as well as the dark dashboard pages. */
     .auth-denied {
       max-width: 480px; margin: 80px auto; text-align: center;
-      background: #14171c;
-      border: 1px solid #252a33;
-      border-radius: 10px;
+      background: var(--panel, #14171c);
+      border: 1px solid var(--border, #252a33);
+      border-radius: var(--radius, 10px);
       padding: 36px 28px;
-      font-family: 'DM Sans', system-ui, sans-serif;
-      color: #e8eaed;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      font-family: 'Archivo', 'DM Sans', system-ui, sans-serif;
+      color: var(--text, #e8eaed);
+      box-shadow: var(--shadow-lg, 0 24px 64px rgba(0,0,0,0.5));
     }
     .auth-denied .icon {
       width: 56px; height: 56px; margin: 0 auto 16px;
-      border-radius: 50%; background: rgba(248,113,113,0.12);
+      border-radius: 50%; background: var(--red-bg, rgba(248,113,113,0.12));
       display: flex; align-items: center; justify-content: center;
       font-size: 24px;
     }
-    .auth-denied h3 { font-size: 17px; font-weight: 700; margin: 0 0 8px 0; color: #e8eaed; }
-    .auth-denied p  { font-size: 14px; color: #8a92a0; margin: 0 0 18px 0; line-height: 1.5; }
-    .auth-denied .countdown { font-size: 12px; color: #8a92a0; margin-top: 14px; }
+    .auth-denied h3 { font-size: 17px; font-weight: 700; margin: 0 0 8px 0; color: var(--text, #e8eaed); }
+    .auth-denied p  { font-size: 14px; color: var(--text-dim, #8a92a0); margin: 0 0 18px 0; line-height: 1.5; }
+    .auth-denied .countdown { font-size: 12px; color: var(--text-dim, #8a92a0); margin-top: 14px; }
     .auth-denied .actions { display: flex; gap: 8px; justify-content: center; }
 
     /* "Coy can access:" label above the pill list */
     .auth-denied-pages-label {
       font-size: 11px;
-      color: #8a92a0;
+      color: var(--text-dim, #8a92a0);
       text-transform: uppercase;
       letter-spacing: 0.06em;
       margin-bottom: 10px;
@@ -286,35 +364,35 @@
     .auth-denied-page {
       display: inline-block;
       padding: 8px 14px;
-      border-radius: 6px;
-      background: #1a1e25;
-      border: 1px solid #252a33;
-      color: #e8eaed;
+      border-radius: var(--radius-sm, 6px);
+      background: var(--panel-2, #1a1e25);
+      border: 1px solid var(--border, #252a33);
+      color: var(--text, #e8eaed);
       font-size: 13px;
       font-weight: 500;
       text-decoration: none;
       transition: background 0.15s, border-color 0.15s;
     }
     .auth-denied-page:hover {
-      background: #1f242c;
-      border-color: #ff6b35;
-      color: #ff6b35;
+      background: var(--hover, #1f242c);
+      border-color: var(--accent, #ff6b35);
+      color: var(--accent, #ff6b35);
     }
     /* Demoted "Switch role" text link at the very bottom */
     .auth-denied-switch {
       margin-top: 18px;
       padding-top: 14px;
-      border-top: 1px solid #252a33;
+      border-top: 1px solid var(--border, #252a33);
       font-size: 12px;
     }
     .auth-denied-switch a {
-      color: #8a92a0;
+      color: var(--text-dim, #8a92a0);
       cursor: pointer;
       text-decoration: underline;
-      text-decoration-color: #2f3540;
+      text-decoration-color: var(--hover-edge, #2f3540);
       text-underline-offset: 3px;
     }
-    .auth-denied-switch a:hover { color: #e8eaed; text-decoration-color: #8a92a0; }
+    .auth-denied-switch a:hover { color: var(--text, #e8eaed); text-decoration-color: var(--text-dim, #8a92a0); }
   `;
 
   function injectStyles() {
@@ -528,6 +606,9 @@
         pill.dataset.authBound = '1';
       }
     }
+
+    // Drop the light/dark switch into the nav
+    startThemeToggle();
 
     // Reveal app shell if hidden
     const header = document.getElementById('app-header');
