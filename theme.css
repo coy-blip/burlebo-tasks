@@ -68,10 +68,10 @@
   --camo:       url('/burlebo-camo.png');
   /* Four strengths of the same print. Turn any of these up or down to taste —
      they are the only knobs that control how loud the camo is. */
-  --camo-wash:    linear-gradient(rgba(244,242,238,.52), rgba(244,242,238,.68)); /* sign-in  */
-  --camo-header:  linear-gradient(rgba(255,255,255,.86), rgba(255,255,255,.90)); /* nav bar  */
-  --camo-page:    linear-gradient(rgba(244,242,238,.93), rgba(244,242,238,.93));/* page bg */
-  --camo-empty:   linear-gradient(rgba(255,255,255,.90), rgba(255,255,255,.93)); /* empty    */
+  --camo-wash:    linear-gradient(rgba(244,242,238,.34), rgba(244,242,238,.48)); /* sign-in  */
+  --camo-header:  linear-gradient(rgba(255,255,255,.62), rgba(255,255,255,.70)); /* nav bar  */
+  --camo-page:    linear-gradient(rgba(244,242,238,.72), rgba(244,242,238,.72));/* page bg */
+  --camo-empty:   linear-gradient(rgba(255,255,255,.72), rgba(255,255,255,.78)); /* empty    */
 
   --radius:    12px;
   --radius-sm: 8px;
@@ -121,10 +121,10 @@
   --chip-count: rgba(255,255,255,.09);
 
   --camo:       url('/burlebo-camo-dark.png');
-  --camo-wash:    linear-gradient(rgba(22,19,14,.34), rgba(22,19,14,.52));
-  --camo-header:  linear-gradient(rgba(31,27,20,.82), rgba(31,27,20,.87));
-  --camo-page:    linear-gradient(rgba(22,19,14,.90), rgba(22,19,14,.90));
-  --camo-empty:   linear-gradient(rgba(31,27,20,.88), rgba(31,27,20,.91));
+  --camo-wash:    linear-gradient(rgba(22,19,14,.18), rgba(22,19,14,.34));
+  --camo-header:  linear-gradient(rgba(31,27,20,.52), rgba(31,27,20,.60));
+  --camo-page:    linear-gradient(rgba(22,19,14,.62), rgba(22,19,14,.62));
+  --camo-empty:   linear-gradient(rgba(31,27,20,.58), rgba(31,27,20,.66));
 
   --shadow:    0 1px 2px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.25);
   --shadow-lg: 0 16px 40px rgba(0,0,0,.55), 0 2px 10px rgba(0,0,0,.4);
@@ -148,13 +148,18 @@ html body .pw-field input {
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
-html body {
-  letter-spacing: -0.005em;
-  /* Camo runs behind the whole page, washed almost to nothing. Every card,
-     table and control sits on a solid --panel fill on top of it, so no data
-     is ever read against the pattern. */
+/* Camo sits on <html>, not <body>, so it still fills the viewport on short
+   pages where body doesn't reach the bottom. Every card, table and control
+   keeps a solid --panel fill on top of it, so no data is read against the
+   pattern. */
+:root:root {
   background: var(--camo-page), var(--camo) center center / cover no-repeat fixed;
   background-color: var(--bg);
+}
+html body {
+  letter-spacing: -0.005em;
+  background: transparent;
+  min-height: 100vh;
 }
 
 html body td.mono,
@@ -252,12 +257,18 @@ html body .theme-toggle:hover {
    5. Page furniture
    ========================================================================== */
 html body main { padding-top: 32px; }
+html body .page-title,
+html body .page-sub { position: relative; z-index: 1; }
 html body .page-title {
   font-size: 30px;
+  text-shadow: 0 1px 0 var(--panel), 0 0 14px var(--panel), 0 0 28px var(--panel);
   font-weight: 800;
   letter-spacing: -0.025em;
 }
-html body .page-sub { color: var(--text-dim); }
+html body .page-sub {
+  color: var(--text-dim);
+  text-shadow: 0 0 10px var(--panel), 0 0 20px var(--panel), 0 0 30px var(--panel);
+}
 
 html body .controls,
 html body .table-wrap,
